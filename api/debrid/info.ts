@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
+import qs from 'qs';
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -51,13 +52,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     try {
-        const postData = new URLSearchParams();
-        postData.append('magnet', magnet);
+        // const postData = new URLSearchParams();
+        // postData.append('magnet', magnet);
+        const data = qs.stringify({ magnet });
 
         // 1. Add magnet link to Real-Debrid
         const addMagnetRes = await axios.post(
             'https://api.real-debrid.com/rest/1.0/torrents/addMagnet',
-            postData,
+            {data},
             { headers }
         );
         const torrentId = addMagnetRes.data.id;
