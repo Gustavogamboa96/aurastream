@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const validTorrents = torrentsWithMagnets.filter(t => t.magnet && t.info_hash);
 
-        const finalTorrents = validTorrents.filter(t => t !== null);
+        const finalTorrents = validTorrents;
 
         if (suggestions) {
             return res.json({ results: finalTorrents.slice(0, 3) });
