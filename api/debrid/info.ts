@@ -10,6 +10,8 @@ async function getTorrentInfoWhenReady(torrentId: string, apiKey: string) {
     const retryDelay = 2000; // 2 seconds
 
     for (let i = 0; i < maxRetries; i++) {
+        console.log(`Real-Debrid torrent info request URL: https://api.real-debrid.com/rest/1.0/torrents/info/${torrentId}`);
+        console.log('Real-Debrid torrent info request headers:', headers);
         const torrentInfoRes = await axios.get(
             `https://api.real-debrid.com/rest/1.0/torrents/info/${torrentId}`,
             { headers }

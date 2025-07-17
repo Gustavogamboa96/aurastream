@@ -34,9 +34,11 @@ function AlbumPage() {
         setFiles(res.data.files);
         setTorrentId(res.data.torrentId);
         setLinks(res.data.links);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to fetch album files', error);
-        alert('Could not load album details.');
+        // Display the specific error from the backend
+        const errorMessage = error.response?.data?.error || 'Could not load album details.';
+        alert(`Error: ${errorMessage}`);
       } finally {
         setLoading(false);
       }
