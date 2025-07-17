@@ -45,13 +45,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Magnet link and API key are required' });
     }
 
-    const headers = { Authorization: `Bearer ${apiKey}` };
+    const headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Bearer ${apiKey}`
+    };
 
     try {
+        const postData = new URLSearchParams();
+        postData.append('magnet', magnet);
+
         // 1. Add magnet link to Real-Debrid
         const addMagnetRes = await axios.post(
             'https://api.real-debrid.com/rest/1.0/torrents/addMagnet',
-            { magnet },
+            postData,
             { headers }
         );
         const torrentId = addMagnetRes.data.id;
