@@ -18,12 +18,16 @@ async function getTorrentInfoWhenReady(torrentId: string, apiKey: string) {
             { headers }
         );
 
+        console.log(`Real-Debrid torrent info response:`, torrentInfoRes.data);
+
         const { status, files } = torrentInfoRes.data;
 
         // If the file list is available and populated, we are good to go.
         // 'waiting_for_file_selection' is the status when RD has the file list.
-        if (status === 'waiting_for_file_selection' && files.length > 0) {
+        if (files.length > 0) {
+            console.log(`got to having more than 0 files`);
             return torrentInfoRes.data;
+
         }
         
         // If not ready, wait and try again
@@ -52,8 +56,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     try {
-        // const postData = new URLSearchParams();
-        // postData.append('magnet', magnet);
         const data = {
             magnet: magnet
         };
