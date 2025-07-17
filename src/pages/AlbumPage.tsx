@@ -36,6 +36,7 @@ function AlbumPage() {
         setFiles(res.data.files);
         setTorrentId(res.data.torrentId);
         setLinks(res.data.links);
+        setAlbumInfo((prev: any) => ({ ...prev, title: res.data.filename || prev.title }));
       } catch (error: any) {
         console.error('Failed to fetch album files', error);
         // Display the specific error from the backend

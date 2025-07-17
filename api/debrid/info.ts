@@ -69,7 +69,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({ 
             files: torrentInfo.files, 
             torrentId: torrentId, 
-            links: torrentInfo.links 
+            links: torrentInfo.links,
+            filename: torrentInfo.filename
         });
     } catch (error: any) {
         console.error(error.response?.data || error.message);
