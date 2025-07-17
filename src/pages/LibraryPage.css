@@ -1,0 +1,41 @@
+.library-page h1 {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+}
+
+.album-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.album-card {
+  background-color: var(--background-light);
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+  transition: background-color 0.2s;
+}
+
+.album-card:hover {
+  background-color: #282828;
+}
+
+.album-cover {
+  width: 100%;
+  border-radius: 4px;
+  margin-bottom: 0.75rem;
+}
+
+.album-title {
+  font-weight: 500;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.album-artist {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}

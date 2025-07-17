@@ -1,0 +1,24 @@
+:root {
+  --background-dark: #121212;
+  --background-light: #1c1c1c;
+  --primary: #9b59b6; /* A nice purple */
+  --primary-accent: #8e44ad;
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --border-color: #2c2c2c;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-dark);
+  color: var(--text-primary);
+}
+
+#root {
+  height: 100vh;
+}

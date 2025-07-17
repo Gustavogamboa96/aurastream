@@ -1,0 +1,46 @@
+.settings-page h1 {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+}
+
+.setting-item {
+  margin-bottom: 1.5rem;
+}
+
+.setting-item label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.setting-item input {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background-color: var(--background-light);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.setting-item input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.save-button {
+  width: 100%;
+  padding: 0.9rem;
+  font-size: 1.1rem;
+  border: none;
+  border-radius: 8px;
+  background-color: var(--primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-button:hover {
+  background-color: var(--primary-accent);
+}

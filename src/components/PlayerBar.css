@@ -1,0 +1,48 @@
+.player-bar {
+  position: fixed;
+  bottom: 60px; /* Height of the sidebar */
+  left: 0;
+  right: 0;
+  height: 60px;
+  background-color: var(--background-light);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  padding: 0 1rem;
+  z-index: 1000;
+}
+
+.player-bar-content {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-primary);
+}
+
+.track-info {
+  text-align: left;
+}
+
+.track-title {
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.track-artist {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.player-controls button {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  margin: 0 0.5rem;
+  cursor: pointer;
+}
+
+.player-controls button:hover {
+  color: var(--primary);
+}

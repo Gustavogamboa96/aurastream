@@ -1,0 +1,99 @@
+.search-page h1,
+.suggestions-container h3,
+.results-container h3 {
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
+}
+
+.suggestions-container h3,
+.results-container h3 {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  margin-top: 1.5rem;
+}
+
+.search-form {
+  display: flex;
+  margin-bottom: 1.5rem;
+}
+
+.search-input-container {
+  flex-grow: 1;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px 0 0 8px;
+  background-color: var(--background-light);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.search-button {
+  padding: 0.8rem 1.2rem;
+  font-size: 1rem;
+  border: 1px solid var(--primary);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  background-color: var(--primary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.search-button:hover {
+  background-color: var(--primary-accent);
+}
+
+.suggestion-card,
+.result-card {
+  background-color: var(--background-light);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-color);
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.suggestion-card {
+  cursor: pointer;
+}
+
+.suggestion-card:hover {
+  background-color: #282828;
+  border-color: var(--primary);
+}
+
+.result-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-title {
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.card-meta {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.card-actions button {
+  background: none;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  padding: 0.4rem 0.8rem;
+  margin-left: 0.5rem;
+  border-radius: 5px;
+  cursor: pointer;
+}
