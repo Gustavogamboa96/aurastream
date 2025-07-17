@@ -31,18 +31,44 @@ export function AppContextProvider({ children }: { children: ReactNode }) {
 
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const playTrack = async (track: any) => {
+  const playTrack = async (trackInfo: any) => {
     if (!debridKey) {
       alert('Please set your Real-Debrid API key in Settings.');
       return;
     }
     try {
-      const res = await axios.post('/api/debrid', 
-        { magnet: track.magnet || track.link }, // Use magnet or link
-        { headers: { Authorization: `Bearer ${debridKey}` } }
-      );
-      setCurrentTrack(track);
-      setStreamUrl(res.data.streamLink);
+      // If a specific file is selected, we already have the torrent info
+      if (trackInfo.selectedFile) {
+        const res = await axios.post('/api/debrid/stream', 
+          { 
+            torrentId: trackInfo.torrentId,
+            fileId: trackInfo.selectedFile.id,
+            link: trackInfo.links[0]
+          },
+          { headers: { Authorization: `Bearer ${debridKey}` } }
+        );
+        setCurrentTrack({ title: trackInfo.selectedFile.path, album: trackInfo.title });
+        setStreamUrl(res.data.streamLink);
+      } else {
+        // This is for playing a whole torrent, find the largest file
+        const infoRes = await axios.post('/api/debrid/info', 
+          { magnet: trackInfo.magnet || trackInfo.link },
+          { headers: { Authorization: `Bearer ${debridKey}` } }
+        );
+        const mainFile = infoRes.data.files.reduce((prev: any, current: any) => 
+            (prev.bytes > current.bytes) ? prev : current
+        );
+        const streamRes = await axios.post('/api/debrid/stream', 
+          { 
+            torrentId: infoRes.data.torrentId,
+            fileId: mainFile.id,
+            link: infoRes.data.links[0]
+          },
+          { headers: { Authorization: `Bearer ${debridKey}` } }
+        );
+        setCurrentTrack({ title: mainFile.path, album: trackInfo.title });
+        setStreamUrl(streamRes.data.streamLink);
+      }
     } catch (error) {
       console.error('Failed to get stream link', error);
       alert('Failed to get stream link from Real-Debrid.');

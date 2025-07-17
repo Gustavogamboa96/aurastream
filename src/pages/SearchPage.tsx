@@ -1,4 +1,5 @@
 import { useState, useContext, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AppContext, IAppContext } from '../store/AppContext';
 import { searchTorrents } from '../services/searchService';
 import debounce from 'lodash.debounce';
@@ -9,6 +10,7 @@ function SearchPage() {
   const [results, setResults] = useState<any[]>([]);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const { playTrack, addToQueue } = useContext(AppContext) as IAppContext;
+  const navigate = useNavigate();
 
   const debouncedSearch = useCallback(
     debounce(async (searchQuery: string) => {
@@ -37,11 +39,9 @@ function SearchPage() {
     setSuggestions([]);
   };
   
-  const handleSuggestionClick = (suggestion: any) => {
-    setQuery(suggestion.title);
-    setSuggestions([]);
-    // Trigger a full search for the selected suggestion
-    searchTorrents(suggestion.title).then(res => setResults(res));
+  const handleResultClick = (torrent: any) => {
+    const torrentId = torrent.info_hash || torrent.title;
+    navigate(`/album/${torrentId}`, { state: { torrent } });
   };
 
   return (
@@ -65,7 +65,7 @@ function SearchPage() {
         <div className="suggestions-container">
           <h3>Suggestions</h3>
           {suggestions.map((s) => (
-            <div className="suggestion-card" key={s.id || s.title} onClick={() => handleSuggestionClick(s)}>
+            <div className="suggestion-card" key={s.id || s.title} onClick={() => handleResultClick(s)}>
               <div className="card-title">{s.title}</div>
               <div className="card-meta">{s.size} | Seeders: {s.seeds}</div>
             </div>
@@ -77,15 +77,12 @@ function SearchPage() {
         <div className="results-container">
           <h3>Results</h3>
           {results.map((r: any) => (
-            <div className="result-card" key={r.id || r.title}>
+            <div className="result-card" key={r.id || r.title} onClick={() => handleResultClick(r)}>
               <div className="card-info">
                 <div className="card-title">{r.title}</div>
                 <div className="card-meta">{r.size} | Seeders: {r.seeds}</div>
               </div>
-              <div className="card-actions">
-                <button onClick={() => playTrack(r)}>Play</button>
-                <button onClick={() => addToQueue(r)}>+</button>
-              </div>
+              {/* Actions removed, click on card navigates */}
             </div>
           ))}
         </div>

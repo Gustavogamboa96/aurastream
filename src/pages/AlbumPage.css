@@ -1,0 +1,65 @@
+.album-page {
+  padding: 1rem;
+  padding-bottom: 120px; /* Space for player and nav */
+}
+
+.back-button {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+.album-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.album-cover-art {
+  width: 150px;
+  height: 150px;
+  border-radius: 8px;
+  margin-right: 1.5rem;
+  object-fit: cover;
+}
+
+.album-meta h1 {
+  font-size: 1.8rem;
+  margin: 0 0 0.5rem 0;
+}
+
+.album-meta p {
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.track-list {
+  margin-top: 1rem;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  padding: 0.8rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.track-item:hover {
+  background-color: var(--background-light);
+}
+
+.track-number {
+  color: var(--text-secondary);
+  margin-right: 1rem;
+  width: 20px;
+  text-align: right;
+}
+
+.track-title {
+  font-weight: 500;
+}

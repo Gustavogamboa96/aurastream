@@ -5,9 +5,9 @@ import PlayerBar from './components/PlayerBar';
 import SearchPage from './pages/SearchPage';
 import LibraryPage from './pages/LibraryPage';
 import SettingsPage from './pages/SettingsPage';
-import * as Context from './store/AppContext';
-import './App.css';
+import AlbumPage from './pages/AlbumPage'; // Import AlbumPage
 import { AppContextProvider } from './store/AppContext';
+import './App.css';
 
 function App() {
   return (
@@ -20,6 +20,7 @@ function App() {
             <Route path="/search" element={<SearchPage />} />
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/album/:id" element={<AlbumPage />} /> {/* Add AlbumPage route */}
           </Routes>
         </main>
         <PlayerBar />
