@@ -15,10 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Query is required' });
     }
     
-    // An API key is now required for search to pre-screen torrents
-    if (!apiKey) {
-        return res.status(401).json({ error: 'Real-Debrid API Key is required for search' });
-    }
+    
 
     try {
         const torrents = await TorrentSearchApi.search(query, 'Music', 20);
@@ -39,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const validTorrents = torrentsWithMagnets.filter(t => t.magnet && t.info_hash);
 
-        const finalTorrents = screenedTorrents.filter(t => t !== null);
+        const finalTorrents = validTorrents.filter(t => t !== null);
 
         if (suggestions) {
             return res.json({ results: finalTorrents.slice(0, 3) });
