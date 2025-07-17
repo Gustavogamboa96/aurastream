@@ -55,6 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             { headers }
         );
         const torrentId = addMagnetRes.data.id;
+        console.log(`Real-Debrid torrent added with ID: ${torrentId}`);
 
         // 2. Poll for torrent info until it's ready
         const torrentInfo = await getTorrentInfoWhenReady(torrentId, apiKey);

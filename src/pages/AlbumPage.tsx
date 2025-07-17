@@ -31,6 +31,8 @@ function AlbumPage() {
           { magnet: albumInfo.magnet || albumInfo.link },
           { headers: { Authorization: `Bearer ${debridKey}` } }
         );
+        console.log('magnet:', albumInfo.magnet);
+        console.log('debrdidKey:', debridKey);
         setFiles(res.data.files);
         setTorrentId(res.data.torrentId);
         setLinks(res.data.links);
