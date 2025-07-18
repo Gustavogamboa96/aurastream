@@ -7,11 +7,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { torrentId, fileId, link } = req.body;
+    const { torrentId, fileId } = req.body;
     const apiKey = req.headers.authorization?.split(' ')[1];
 
-    if (!torrentId || !fileId || !link || !apiKey) {
-        return res.status(400).json({ error: 'torrentId, fileId, link, and API key are required' });
+    if (!torrentId || !fileId || !apiKey) {
+        return res.status(400).json({ error: 'torrentId, fileId, and API key are required' });
     }
 
     const headers = { Authorization: `Bearer ${apiKey}` };
