@@ -76,7 +76,7 @@ function SearchPage() {
       {results.length > 0 && (
         <div className="results-container">
           <h3>Results</h3>
-          {results.map((r: any) => (
+          {results.slice(0, 15).map((r: any) => (
             <div className="result-card" key={r.id || r.title} onClick={() => handleResultClick(r)}>
               <div className="card-info">
                 <div className="card-title">{r.title}</div>
