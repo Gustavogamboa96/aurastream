@@ -3,7 +3,8 @@ import TorrentSearchApi from 'torrent-search-api';
 
 // Enable 1337x and ThePirateBay providers
 // TorrentSearchApi.enableProvider('1337x');
-TorrentSearchApi.enableProvider('ThePirateBay');
+// TorrentSearchApi.enableProvider('ThePirateBay');
+TorrentSearchApi.enablePublicProviders();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { query, suggestions } = req.query;
