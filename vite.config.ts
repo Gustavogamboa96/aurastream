@@ -16,6 +16,7 @@ export default defineConfig({
         theme_color: '#7c3aed',
         background_color: '#181028',
         display: 'standalone',
+        display_override: ['fullscreen', 'standalone', 'minimal-ui', 'browser'],
         scope: '/',
         start_url: '/',
         orientation: 'portrait',
@@ -37,7 +38,14 @@ export default defineConfig({
             purpose: 'any maskable'
           }
         ]
-      }
+      },
+      workbox: {
+        clientsClaim: true,
+        skipWaiting: true
+      },
+      devOptions: {
+        enabled: true
+      },
     })
   ],
   build: {
