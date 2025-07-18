@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useContext } from 'react';
+import qs from 'qs';
 import { AppContext, IAppContext } from '../store/AppContext';
 import axios from 'axios';
 import './AlbumPage.css';
@@ -50,13 +51,72 @@ function AlbumPage() {
     fetchAlbumFiles();
   }, [albumInfo, navigate, debridKey]);
 
-  const handleTrackClick = (file: any) => {
-    playTrack({ 
-      title: albumInfo.title, 
-      selectedFile: file,
-      torrentId: torrentId,
-      links: links
-    });
+  const handleTrackClick = async (file: any) => {
+    if (!torrentId || !debridKey) return;
+    try {
+      // 1. Select the file for download
+      await axios.post(
+        `https://api.real-debrid.com/rest/1.0/torrents/selectFiles/${torrentId}`,
+        qs.stringify({ files: String(file.id) }),
+        {
+          headers: {
+            Authorization: `Bearer ${debridKey}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        }
+      );
+
+      // 2. Poll for links
+      let pollLinks = [];
+      let pollTries = 0;
+      while (pollLinks.length === 0 && pollTries < 20) {
+        const infoRes = await axios.get(
+          `https://api.real-debrid.com/rest/1.0/torrents/info/${torrentId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${debridKey}`,
+            },
+          }
+        );
+        pollLinks = infoRes.data.links || [];
+        if (pollLinks.length > 0) break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        pollTries++;
+      }
+      if (pollLinks.length === 0) {
+        alert('Failed to get streaming link from Real-Debrid.');
+        return;
+      }
+
+      // 3. Unrestrict the first link
+      const unrestrictRes = await axios.post(
+        'https://api.real-debrid.com/rest/1.0/unrestrict/link',
+        qs.stringify({ link: pollLinks[0] }),
+        {
+          headers: {
+            Authorization: `Bearer ${debridKey}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+        }
+      );
+      const streamUrl = unrestrictRes.data.download;
+      if (!streamUrl) {
+        alert('Could not get a direct stream link.');
+        return;
+      }
+
+      // 4. Play the track using the direct stream URL
+      playTrack({
+        title: albumInfo.title,
+        selectedFile: file,
+        torrentId: torrentId,
+        links: pollLinks,
+        streamUrl: streamUrl,
+      });
+    } catch (err: any) {
+      console.error('Error streaming track:', err);
+      alert('Error streaming track: ' + (err.response?.data?.error || err.message));
+    }
   };
 
   return (
