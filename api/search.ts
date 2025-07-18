@@ -4,7 +4,7 @@ import TorrentSearchApi from 'torrent-search-api';
 // Enable 1337x and ThePirateBay providers
 // TorrentSearchApi.enableProvider('1337x');
 // TorrentSearchApi.enableProvider('ThePirateBay');
-TorrentSearchApi.enablePublicProviders();
+// TorrentSearchApi.enablePublicProviders();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { query, suggestions } = req.query;
@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const torrents = await TorrentSearchApi.search(query, 'Music', 20);
+    const torrents = await TorrentSearchApi.search(['IpTorrents', 'Torrent9'], query, 'Music', 20);
     
     // Actively fetch magnet links if they are not included in the search result.
     const torrentsWithMagnets = await Promise.all(
