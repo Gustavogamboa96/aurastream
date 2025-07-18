@@ -2,8 +2,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import TorrentSearchApi from 'torrent-search-api';
 
 // Enable 1337x and ThePirateBay providers
-TorrentSearchApi.enableProvider('1337x');
-// TorrentSearchApi.enableProvider('ThePirateBay');
+// TorrentSearchApi.enableProvider('1337x');
+TorrentSearchApi.disableProvider('1337x'); // Disable 1337x for now
+TorrentSearchApi.enableProvider('ThePirateBay');
 // TorrentSearchApi.enablePublicProviders();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
