@@ -9,6 +9,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      manifestFilename: 'manifest.json',
       manifest: {
         name: 'AuraStream',
         short_name: 'AuraStream',
