@@ -1,11 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import TorrentSearchApi from 'torrent-search-api';
+import TorrentSearch from 'torrent-search';
 
-// Enable 1337x and ThePirateBay providers
-// TorrentSearchApi.enableProvider('1337x');
-TorrentSearchApi.disableProvider('ThePirateBay'); // Disable 1337x for now
-// TorrentSearchApi.enableProvider('ThePirateBay');
-TorrentSearchApi.enablePublicProviders();
+// Initialize TorrentSearch instance
+const torrentSearch = new TorrentSearch();
+
+// Enable providers
+torrentSearch.enableProvider('1337x');
+torrentSearch.enableProvider('ThePirateBay');
+torrentSearch.enableProvider('Limetorrents');
+torrentSearch.enableProvider('KickassTorrents');
+
+torrentSearch.enablePublicProviders();
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { query, suggestions } = req.query;
@@ -15,24 +20,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const torrents = await TorrentSearchApi.search(query, 'Music', 20);
-    
+    const torrents = await torrentSearch.search(query, 'Music', 20);
+
     // Actively fetch magnet links if they are not included in the search result.
     const torrentsWithMagnets = await Promise.all(
-        torrents.map(async (torrent) => {
-            if (!torrent.magnet) {
-                try {
-                    const magnet = await TorrentSearchApi.getMagnet(torrent);
-                    // Return a new object with the magnet link included
-                    return { ...torrent, magnet: magnet };
-                } catch (e) {
-                    // If getting the magnet fails, return the original torrent
-                    console.warn(`Could not fetch magnet for ${torrent.title}`);
-                    return torrent;
-                }
-            }
+      torrents.map(async (torrent) => {
+        if (!torrent.magnet) {
+          try {
+            const magnet = await torrentSearch.getMagnet(torrent);
+            // Return a new object with the magnet link included
+            return { ...torrent, magnet: magnet };
+          } catch (e) {
+            // If getting the magnet fails, return the original torrent
+            console.warn(`Could not fetch magnet for ${torrent.title}`);
             return torrent;
-        })
+          }
+        }
+        return torrent;
+      })
     );
 
     // Only return torrents that we could find a magnet link for.
