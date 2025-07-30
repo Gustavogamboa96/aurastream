@@ -55,7 +55,7 @@ async function search1337x(query: string): Promise<Torrent[]> {
     const $ = cheerio.load(data);
     const torrents: Torrent[] = [];
 
-    $('.table-list tbody tr').each(async (i, el) => {
+    for (const el of $('.table-list tbody tr').toArray()) {
       const title = $(el).find('.name a').text();
       const torrentLink = "https://www.1337x.to" + $(el).find('.name a').attr('href');
       const seeds = parseInt($(el).find('.seeds').text(), 10) || 0;
@@ -82,7 +82,7 @@ async function search1337x(query: string): Promise<Torrent[]> {
           console.error(`Error fetching magnet for ${title}:`, error);
         }
       }
-    });
+    }
 
     return torrents;
   } catch (error) {
