@@ -53,60 +53,7 @@ async function searchNyaa(query: string): Promise<NormalizedTorrent[]> {
   }
 }
 
-// RuTracker scraper
-async function searchRutracker(query: string): Promise<NormalizedTorrent[]> {
-  try {
-    // Note: RuTracker requires authentication. This is a simplified example
-    const response = await axios.get(`https://rutracker.org/forum/search.php?nm=${encodeURIComponent(query)}`);
-    const $ = cheerio.load(response.data);
-    const results: NormalizedTorrent[] = [];
-
-    $('.tor-item').each((_, row) => {
-      const $row = $(row);
-      const title = $row.find('.tt-name').text().trim();
-      const size = $row.find('.tor-size').text().trim();
-      const seeds = parseInt($row.find('.seeders').text().trim(), 10);
-      const peers = parseInt($row.find('.leechers').text().trim(), 10);
-      const desc = 'https://rutracker.org/forum/' + $row.find('.tt-name a').attr('href');
-      const time = $row.find('.tor-time').text().trim();
-      
-      if (title && desc) {
-        results.push({
-          title,
-          size,
-          time,
-          seeds: isNaN(seeds) ? 0 : seeds,
-          peers: isNaN(peers) ? 0 : peers,
-          desc,
-          provider: 'RuTracker'
-        });
-      }
-    });
-
-    // Fetch magnet links for each result
-    const resultsWithMagnets = await Promise.all(
-      results.map(async (result) => {
-        if (result.desc) {
-          try {
-            const detailResponse = await axios.get(result.desc);
-            const $detail = cheerio.load(detailResponse.data);
-            const magnet = $detail('.magnet-link').attr('href');
-            return { ...result, magnet };
-          } catch (error) {
-            console.error(`Error fetching magnet for ${result.title}:`, error);
-            return result;
-          }
-        }
-        return result;
-      })
-    );
-
-    return resultsWithMagnets;
-  } catch (error) {
-    console.error('Error searching RuTracker:', error);
-    return [];
-  }
-}
+// Additional torrent providers can be added here
 
 // Torlock scraper
 async function searchTorlock(query: string): Promise<NormalizedTorrent[]> {
@@ -171,11 +118,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Search all sources in parallel
-    const [torrentsApi, nyaaTorrents, torlockTorrents, ruTrackerTorrents] = await Promise.all([
+    const [torrentsApi, nyaaTorrents, torlockTorrents] = await Promise.all([
       TorrentSearchApi.search(query, 'Music'),
       searchNyaa(query),
-      searchTorlock(query),
-      searchRutracker(query)
+      searchTorlock(query)
     ]);
     
     // Normalize torrent-search-api results
@@ -216,8 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const allTorrents = [
       ...normalizedApiTorrents.filter((t): t is NormalizedTorrent => t !== null),
       ...nyaaTorrents,
-      ...torlockTorrents,
-      ...ruTrackerTorrents
+      ...torlockTorrents
     ];
 
     // Filter out torrents without magnet links and normalize data
