@@ -3,108 +3,260 @@ import TorrentSearchApi from 'torrent-search-api';
 import axios from 'axios';
 import cheerio from 'cheerio';
 
-// Enable 1337x provider
-TorrentSearchApi.enableProvider('1337x');
-
-interface TorrentResult {
-    title: string;
-    time: string;
-    seeds: number;
-    peers: number;
-    size: string;
-    desc: string;
-    provider: string;
-    magnet: string;
+interface NormalizedTorrent {
+  title: string;
+  time?: string;
+  seeds?: number;
+  peers?: number;
+  size?: string;
+  desc?: string;
+  provider: string;
+  magnet?: string;
 }
 
-async function searchRuTracker(query: string): Promise<TorrentResult[]> {
-    try {
-        const url = `http://rutracker.org/forum/tracker.php?nm=${encodeURIComponent(query)}`;
-        const { data } = await axios.get(url, { responseType: 'arraybuffer' });
-        const $ = cheerio.load(data.toString('win1251'));
-        const torrents: TorrentResult[] = [];
+// Enable 1337x provider for torrent-search-api
+TorrentSearchApi.enableProvider('1337x');
 
-        $('tr.tCenter').each((i, el) => {
-            const title = $(el).find('a.tLink').text();
-            const desc = "http://rutracker.org/forum/" + $(el).find('a.tLink').attr('href');
-            const size = $(el).find('a.f-dl').text();
-            const seeds = parseInt($(el).find('b.seedmed').text(), 10) || 0;
-            const peers = parseInt($(el).find('td').eq(5).text(), 10) || 0;
-            const time = $(el).find('td').eq(6).text();
+// Nyaa.si scraper
+async function searchNyaa(query: string): Promise<NormalizedTorrent[]> {
+  try {
+    const response = await axios.get(`https://nyaa.si/?f=0&c=0_0&q=${encodeURIComponent(query)}`);
+    const $ = cheerio.load(response.data);
+    const results: NormalizedTorrent[] = [];
 
-            if (title && desc) {
-                torrents.push({
-                    title,
-                    desc,
-                    size,
-                    seeds,
-                    peers,
-                    time,
-                    provider: 'RuTracker',
-                    magnet: '' // RuTracker does not provide magnet links directly in search results
-                });
-            }
+    $('tr.default').each((_, row) => {
+      const $row = $(row);
+      const title = $row.find('td:nth-child(2) a:last-child').text().trim();
+      const magnet = $row.find('td:nth-child(3) a[href^="magnet:"]').attr('href');
+      const size = $row.find('td:nth-child(4)').text().trim();
+      const time = $row.find('td:nth-child(5)').text().trim();
+      const seeds = parseInt($row.find('td:nth-child(6)').text().trim(), 10);
+      const peers = parseInt($row.find('td:nth-child(7)').text().trim(), 10);
+      
+      if (title && magnet) {
+        results.push({
+          title,
+          magnet,
+          size,
+          time,
+          seeds,
+          peers,
+          provider: 'Nyaa'
         });
+      }
+    });
 
-        return torrents;
-    } catch (error) {
-        console.error('Error searching RuTracker:', error);
-        return [];
-    }
+    return results;
+  } catch (error) {
+    console.error('Error searching Nyaa:', error);
+    return [];
+  }
+}
+
+// RuTracker scraper
+async function searchRutracker(query: string): Promise<NormalizedTorrent[]> {
+  try {
+    // Note: RuTracker requires authentication. This is a simplified example
+    const response = await axios.get(`https://rutracker.org/forum/search.php?nm=${encodeURIComponent(query)}`);
+    const $ = cheerio.load(response.data);
+    const results: NormalizedTorrent[] = [];
+
+    $('.tor-item').each((_, row) => {
+      const $row = $(row);
+      const title = $row.find('.tt-name').text().trim();
+      const size = $row.find('.tor-size').text().trim();
+      const seeds = parseInt($row.find('.seeders').text().trim(), 10);
+      const peers = parseInt($row.find('.leechers').text().trim(), 10);
+      const desc = 'https://rutracker.org/forum/' + $row.find('.tt-name a').attr('href');
+      const time = $row.find('.tor-time').text().trim();
+      
+      if (title && desc) {
+        results.push({
+          title,
+          size,
+          time,
+          seeds: isNaN(seeds) ? 0 : seeds,
+          peers: isNaN(peers) ? 0 : peers,
+          desc,
+          provider: 'RuTracker'
+        });
+      }
+    });
+
+    // Fetch magnet links for each result
+    const resultsWithMagnets = await Promise.all(
+      results.map(async (result) => {
+        if (result.desc) {
+          try {
+            const detailResponse = await axios.get(result.desc);
+            const $detail = cheerio.load(detailResponse.data);
+            const magnet = $detail('.magnet-link').attr('href');
+            return { ...result, magnet };
+          } catch (error) {
+            console.error(`Error fetching magnet for ${result.title}:`, error);
+            return result;
+          }
+        }
+        return result;
+      })
+    );
+
+    return resultsWithMagnets;
+  } catch (error) {
+    console.error('Error searching RuTracker:', error);
+    return [];
+  }
+}
+
+// Torlock scraper
+async function searchTorlock(query: string): Promise<NormalizedTorrent[]> {
+  try {
+    const response = await axios.get(`https://www.torlock.com/music/${encodeURIComponent(query)}/1/`);
+    const $ = cheerio.load(response.data);
+    const results: NormalizedTorrent[] = [];
+
+    $('.table tbody tr').each((_, row) => {
+      const $row = $(row);
+      const title = $row.find('td:nth-child(1) b').text().trim();
+      const size = $row.find('td:nth-child(3)').text().trim();
+      const time = $row.find('td:nth-child(2)').text().trim();
+      const seeds = parseInt($row.find('td:nth-child(4)').text().trim(), 10);
+      const peers = parseInt($row.find('td:nth-child(5)').text().trim(), 10);
+      const desc = 'https://www.torlock.com' + $row.find('td:nth-child(1) a').attr('href');
+      
+      if (title) {
+        results.push({
+          title,
+          size,
+          time,
+          seeds,
+          peers,
+          desc,
+          provider: 'Torlock'
+        });
+      }
+    });
+
+    // Fetch magnet links for each result
+    const resultsWithMagnets = await Promise.all(
+      results.map(async (result) => {
+        if (result.desc) {
+          try {
+            const detailResponse = await axios.get(result.desc);
+            const $detail = cheerio.load(detailResponse.data);
+            const magnet = $detail('a[href^="magnet:"]').attr('href');
+            return { ...result, magnet };
+          } catch (error) {
+            console.error(`Error fetching magnet for ${result.title}:`, error);
+            return result;
+          }
+        }
+        return result;
+      })
+    );
+
+    return resultsWithMagnets;
+  } catch (error) {
+    console.error('Error searching Torlock:', error);
+    return [];
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    const { query, suggestions } = req.query;
+  const { query, suggestions } = req.query;
 
-    if (!query || typeof query !== 'string') {
-        return res.status(400).json({ error: 'Query is required' });
-    }
+  if (!query || typeof query !== 'string') {
+    return res.status(400).json({ error: 'Query is required' });
+  }
 
-    try {
-        const [tpbResults, ruTrackerResults] = await Promise.all([
-            TorrentSearchApi.search(query, 'Music'),
-            searchRuTracker(query)
-        ]);
-
-        const torrentsWithMagnets = await Promise.all(
-            tpbResults.map(async (torrent) => {
-                if (!torrent.magnet) {
-                    try {
-                        const magnet = await TorrentSearchApi.getMagnet(torrent);
-                        return { ...torrent, magnet: magnet };
-                    } catch (e) {
-                        console.warn(`Could not fetch magnet for ${torrent.title}`);
-                        return torrent;
-                    }
-                }
-                return torrent;
-            })
-        );
-
-        const finalTorrents: TorrentResult[] = torrentsWithMagnets
-            .filter(t => t.magnet)
-            .map(t => ({
-                title: t.title,
-                time: t.time,
-                seeds: t.seeds || 0,
-                peers: t.peers || 0,
-                size: t.size,
-                desc: t.desc,
-                provider: t.provider,
-                magnet: t.magnet || ''
-            }));
-
-        const allResults = [...finalTorrents, ...ruTrackerResults];
-        allResults.sort((a, b) => b.seeds - a.seeds);
-
-        if (suggestions) {
-            return res.json({ results: allResults.slice(0, 20) });
+  try {
+    // Search all sources in parallel
+    const [torrentsApi, nyaaTorrents, torlockTorrents, ruTrackerTorrents] = await Promise.all([
+      TorrentSearchApi.search(query, 'Music'),
+      searchNyaa(query),
+      searchTorlock(query),
+      searchRutracker(query)
+    ]);
+    
+    // Normalize torrent-search-api results
+    const normalizedApiTorrents = await Promise.all(
+      torrentsApi.map(async (torrent) => {
+        if (!torrent.magnet) {
+          try {
+            const magnet = await TorrentSearchApi.getMagnet(torrent);
+            return {
+              title: torrent.title,
+              magnet,
+              size: torrent.size,
+              seeds: torrent.seeds,
+              peers: torrent.peers,
+              desc: torrent.desc,
+              provider: torrent.provider,
+              time: torrent.time
+            };
+          } catch (error) {
+            console.warn(`Could not fetch magnet for ${torrent.title}:`, error);
+            return null;
+          }
         }
+        return {
+          title: torrent.title,
+          magnet: torrent.magnet,
+          size: torrent.size,
+          seeds: torrent.seeds,
+          peers: torrent.peers,
+          desc: torrent.desc,
+          provider: torrent.provider,
+          time: torrent.time
+        };
+      })
+    );
 
-        console.log('Search results:', allResults);
-        return res.json({ results: allResults });
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({ error: 'Failed to search for torrents' });
+    // Combine all results
+    const allTorrents = [
+      ...normalizedApiTorrents.filter((t): t is NormalizedTorrent => t !== null),
+      ...nyaaTorrents,
+      ...torlockTorrents,
+      ...ruTrackerTorrents
+    ];
+
+    // Filter out torrents without magnet links and normalize data
+    const validTorrents = allTorrents
+      .filter(t => t.magnet)
+      .map(t => ({
+        ...t,
+        seeds: t.seeds || 0,
+        peers: t.peers || 0,
+        size: t.size || 'Unknown'
+      }));
+
+    // Sort torrents by the number of seeders in descending order
+    validTorrents.sort((a, b) => b.seeds - a.seeds);
+
+    // For suggestions, prioritize high-seeder torrents and ensure good quality
+    if (suggestions) {
+      const suggestedTorrents = validTorrents
+        .filter(t => {
+          // Filter for likely high-quality music torrents
+          const title = t.title.toLowerCase();
+          return (
+            t.seeds >= 5 && // Has some seeds
+            (title.includes('mp3') || 
+             title.includes('flac') || 
+             title.includes('wav') ||
+             title.includes('album') ||
+             title.includes('discography'))
+          );
+        })
+        .slice(0, 10); // Get top 10 suggestions
+
+      return res.json({ results: suggestedTorrents });
     }
+
+    console.log('Search results:', validTorrents);
+    return res.json({ results: validTorrents });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: 'Failed to search for torrents' });
+  }
 }
