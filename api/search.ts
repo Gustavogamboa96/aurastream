@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import TorrentSearchApi from 'torrent-search-api';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
+import * as PirateBay from 'thepiratebay';
 
 interface NormalizedTorrent {
   title: string;
@@ -14,100 +13,124 @@ interface NormalizedTorrent {
   magnet?: string;
 }
 
-// Enable 1337x provider for torrent-search-api
+// Enable providers for torrent-search-api
 TorrentSearchApi.enableProvider('1337x');
+TorrentSearchApi.enableProvider('ThePirateBay');
 
-// Nyaa.si scraper
-async function searchNyaa(query: string): Promise<NormalizedTorrent[]> {
+// Search The Pirate Bay directly
+async function searchPirateBay(query: string): Promise<NormalizedTorrent[]> {
   try {
-    const response = await axios.get(`https://nyaa.si/?f=0&c=0_0&q=${encodeURIComponent(query)}`);
-    const $ = cheerio.load(response.data);
-    const results: NormalizedTorrent[] = [];
-
-    $('tr.default').each((_, row) => {
-      const $row = $(row);
-      const title = $row.find('td:nth-child(2) a:last-child').text().trim();
-      const magnet = $row.find('td:nth-child(3) a[href^="magnet:"]').attr('href');
-      const size = $row.find('td:nth-child(4)').text().trim();
-      const time = $row.find('td:nth-child(5)').text().trim();
-      const seeds = parseInt($row.find('td:nth-child(6)').text().trim(), 10);
-      const peers = parseInt($row.find('td:nth-child(7)').text().trim(), 10);
-      
-      if (title && magnet) {
-        results.push({
-          title,
-          magnet,
-          size,
-          time,
-          seeds,
-          peers,
-          provider: 'Nyaa'
-        });
-      }
+    const results = await PirateBay.search(query, {
+      category: 'audio',
+      orderBy: 'seeds',
+      sortBy: 'desc'
     });
 
-    return results;
+    return results.map(result => ({
+      title: result.name,
+      magnet: result.magnetLink,
+      size: result.size,
+      time: result.uploadDate,
+      seeds: result.seeders,
+      peers: result.leechers,
+      desc: result.link,
+      provider: 'ThePirateBay'
+    }));
   } catch (error) {
-    console.error('Error searching Nyaa:', error);
+    console.error('Error searching The Pirate Bay:', error);
     return [];
   }
 }
+// async function searchNyaa(query: string): Promise<NormalizedTorrent[]> {
+//   try {
+//     const response = await axios.get(`https://nyaa.si/?f=0&c=0_0&q=${encodeURIComponent(query)}`);
+//     const $ = cheerio.load(response.data);
+//     const results: NormalizedTorrent[] = [];
+
+//     $('tr.default').each((_, row) => {
+//       const $row = $(row);
+//       const title = $row.find('td:nth-child(2) a:last-child').text().trim();
+//       const magnet = $row.find('td:nth-child(3) a[href^="magnet:"]').attr('href');
+//       const size = $row.find('td:nth-child(4)').text().trim();
+//       const time = $row.find('td:nth-child(5)').text().trim();
+//       const seeds = parseInt($row.find('td:nth-child(6)').text().trim(), 10);
+//       const peers = parseInt($row.find('td:nth-child(7)').text().trim(), 10);
+      
+//       if (title && magnet) {
+//         results.push({
+//           title,
+//           magnet,
+//           size,
+//           time,
+//           seeds,
+//           peers,
+//           provider: 'Nyaa'
+//         });
+//       }
+//     });
+
+//     return results;
+//   } catch (error) {
+//     console.error('Error searching Nyaa:', error);
+//     return [];
+//   }
+// }
 
 // Additional torrent providers can be added here
 
 // Torlock scraper
-async function searchTorlock(query: string): Promise<NormalizedTorrent[]> {
-  try {
-    const response = await axios.get(`https://www.torlock.com/music/${encodeURIComponent(query)}/1/`);
-    const $ = cheerio.load(response.data);
-    const results: NormalizedTorrent[] = [];
+// async function searchTorlock(query: string): Promise<NormalizedTorrent[]> {
+//   try {
+//     const response = await axios.get(`https://www.torlock.com/music/${encodeURIComponent(query)}/1/`);
+//     const $ = cheerio.load(response.data);
+//     const results: NormalizedTorrent[] = [];
 
-    $('.table tbody tr').each((_, row) => {
-      const $row = $(row);
-      const title = $row.find('td:nth-child(1) b').text().trim();
-      const size = $row.find('td:nth-child(3)').text().trim();
-      const time = $row.find('td:nth-child(2)').text().trim();
-      const seeds = parseInt($row.find('td:nth-child(4)').text().trim(), 10);
-      const peers = parseInt($row.find('td:nth-child(5)').text().trim(), 10);
-      const desc = 'https://www.torlock.com' + $row.find('td:nth-child(1) a').attr('href');
+//     $('.table tbody tr').each((_, row) => {
+//       const $row = $(row);
+//       const title = $row.find('td:nth-child(1) b').text().trim();
+//       const size = $row.find('td:nth-child(3)').text().trim();
+//       const time = $row.find('td:nth-child(2)').text().trim();
+//       const seeds = parseInt($row.find('td:nth-child(4)').text().trim(), 10);
+//       const peers = parseInt($row.find('td:nth-child(5)').text().trim(), 10);
+//       const desc = 'https://www.torlock.com' + $row.find('td:nth-child(1) a').attr('href');
       
-      if (title) {
-        results.push({
-          title,
-          size,
-          time,
-          seeds,
-          peers,
-          desc,
-          provider: 'Torlock'
-        });
-      }
-    });
+//       if (title) {
+//         results.push({
+//           title,
+//           size,
+//           time,
+//           seeds,
+//           peers,
+//           desc,
+//           provider: 'Torlock'
+//         });
+//       }
+//     });
 
-    // Fetch magnet links for each result
-    const resultsWithMagnets = await Promise.all(
-      results.map(async (result) => {
-        if (result.desc) {
-          try {
-            const detailResponse = await axios.get(result.desc);
-            const $detail = cheerio.load(detailResponse.data);
-            const magnet = $detail('a[href^="magnet:"]').attr('href');
-            return { ...result, magnet };
-          } catch (error) {
-            console.error(`Error fetching magnet for ${result.title}:`, error);
-            return result;
-          }
-        }
-        return result;
-      })
-    );
+//     // Fetch magnet links for each result
+//     const resultsWithMagnets = await Promise.all(
+//       results.map(async (result) => {
+//         if (result.desc) {
+//           try {
+//             const detailResponse = await axios.get(result.desc);
+//             const $detail = cheerio.load(detailResponse.data);
+//             const magnet = $detail('a[href^="magnet:"]').attr('href');
+//             return { ...result, magnet };
+//           } catch (error) {
+//             console.error(`Error fetching magnet for ${result.title}:`, error);
+//             return result;
+//           }
+//         }
+//         return result;
+//       })
+//     );
 
-    return resultsWithMagnets;
-  } catch (error) {
-    console.error('Error searching Torlock:', error);
-    return [];
-  }
-}
+//     return resultsWithMagnets;
+//   } catch (error) {
+//     console.error('Error searching Torlock:', error);
+//     return [];
+//   }
+// }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { query, suggestions } = req.query;
@@ -117,11 +140,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Search all sources in parallel
-    const [torrentsApi, nyaaTorrents, torlockTorrents] = await Promise.all([
+    // Search both providers in parallel
+    const [torrentsApi, pirateBayResults] = await Promise.all([
       TorrentSearchApi.search(query, 'Music'),
-      searchNyaa(query),
-      searchTorlock(query)
+      searchPirateBay(query)
     ]);
     
     // Normalize torrent-search-api results
@@ -161,8 +183,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Combine all results
     const allTorrents = [
       ...normalizedApiTorrents.filter((t): t is NormalizedTorrent => t !== null),
-      ...nyaaTorrents,
-      ...torlockTorrents
+      ...pirateBayResults
     ];
 
     // Filter out torrents without magnet links and normalize data
