@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (suggestions) {
       // Return top 3 torrents for suggestion cards
-      return res.json({ results: finalTorrents.slice(0, 3) });
+      return res.json({ results: finalTorrents.slice(0, 20) });
     }
     console.log('Search results:', finalTorrents);
     return res.json({ results: finalTorrents });
