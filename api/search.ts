@@ -14,7 +14,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const torrents = await TorrentSearchApi.search(query, 'Music', 20);
+    const torrents = await TorrentSearchApi.search(query, 'Music');
     
     // Actively fetch magnet links if they are not included in the search result.
     const torrentsWithMagnets = await Promise.all(
@@ -37,9 +37,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Only return torrents that we could find a magnet link for.
     const finalTorrents = torrentsWithMagnets.filter(t => t.magnet);
 
+    // Sort torrents by the number of seeders in descending order
+    finalTorrents.sort((a, b) => (b.seeds || 0) - (a.seeds || 0));
+
     if (suggestions) {
       // Return top 3 torrents for suggestion cards
-      return res.json({ results: finalTorrents.slice(0, 20) });
+      return res.json({ results: finalTorrents });
     }
     console.log('Search results:', finalTorrents);
     return res.json({ results: finalTorrents });
