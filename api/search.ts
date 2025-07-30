@@ -1,35 +1,89 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import axios from 'axios';
+import cheerio from 'cheerio';
 
-interface TorrentInfo {
-  id: string;
+interface Torrent {
   title: string;
-  url: string;
-  magnet?: string;
-  size?: string;
-  seeds?: number;
+  magnet: string;
+  size: string;
+  seeds: number;
+  peers: number;
   provider: string;
 }
 
-// Function to search 1337x
-async function search1337x(query: string): Promise<TorrentInfo[]> {
+async function searchThePirateBay(query: string): Promise<Torrent[]> {
   try {
-    const response = await axios.get(`https://1337x.to/search/${encodeURIComponent(query)}/1/`);
-    const html = response.data;
-    
-    const torrents: TorrentInfo[] = [];
-    const regex = /<a href="\/torrent\/(\d+)\/([^"]+)">([^<]+)<\/a>/g;
-    let match;
-    
-    while ((match = regex.exec(html)) !== null) {
-      torrents.push({
-        id: match[1],
-        title: match[3],
-        url: `https://1337x.to/torrent/${match[1]}/${match[2]}/`,
-        provider: '1337x'
-      });
-    }
-    
+    const url = `https://thepiratebay.org/search.php?q=${encodeURIComponent(query)}&cat=0`;
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+    const torrents: Torrent[] = [];
+
+    $('#searchResult tr').each((i, el) => {
+      if (i === 0) return; // Skip header row
+
+      const title = $(el).find('.detName a').text();
+      const magnet = $(el).find('a[href^="magnet:"]').attr('href') || '';
+      const sizeInfo = $(el).find('.detDesc').text();
+      const sizeMatch = sizeInfo.match(/Size (\d+\.\d+\s[A-Za-z]+)/);
+      const size = sizeMatch ? sizeMatch[1] : 'N/A';
+      const seeds = parseInt($(el).find('td').eq(2).text(), 10) || 0;
+      const peers = parseInt($(el).find('td').eq(3).text(), 10) || 0;
+
+      if (title && magnet) {
+        torrents.push({
+          title,
+          magnet,
+          size,
+          seeds,
+          peers,
+          provider: 'ThePirateBay',
+        });
+      }
+    });
+
+    return torrents;
+  } catch (error) {
+    console.error('Error searching ThePirateBay:', error);
+    return [];
+  }
+}
+
+async function search1337x(query: string): Promise<Torrent[]> {
+  try {
+    const url = `https://www.1337x.to/search/${encodeURIComponent(query)}/1/`;
+    const { data } = await axios.get(url);
+    const $ = cheerio.load(data);
+    const torrents: Torrent[] = [];
+
+    $('.table-list tbody tr').each(async (i, el) => {
+      const title = $(el).find('.name a').text();
+      const torrentLink = "https://www.1337x.to" + $(el).find('.name a').attr('href');
+      const seeds = parseInt($(el).find('.seeds').text(), 10) || 0;
+      const peers = parseInt($(el).find('.leeches').text(), 10) || 0;
+      const size = $(el).find('.size').text().replace(/\d+.*$/, '');
+
+      if (title && torrentLink) {
+        try {
+          const { data: torrentPageData } = await axios.get(torrentLink);
+          const $$ = cheerio.load(torrentPageData);
+          const magnet = $$('a[href^="magnet:"]').attr('href') || '';
+
+          if (magnet) {
+            torrents.push({
+              title,
+              magnet,
+              size,
+              seeds,
+              peers,
+              provider: '1337x',
+            });
+          }
+        } catch (error) {
+          console.error(`Error fetching magnet for ${title}:`, error);
+        }
+      }
+    });
+
     return torrents;
   } catch (error) {
     console.error('Error searching 1337x:', error);
@@ -37,124 +91,24 @@ async function search1337x(query: string): Promise<TorrentInfo[]> {
   }
 }
 
-// Function to search The Pirate Bay
-async function searchPirateBay(query: string): Promise<TorrentInfo[]> {
-  try {
-    const response = await axios.get(`https://thepiratebay.org/search/${encodeURIComponent(query)}/1/99/0`);
-    const html = response.data;
-    
-    const torrents: TorrentInfo[] = [];
-    const regex = /<a href="\/torrent\/(\d+)\/([^"]+)".*?>(.*?)<\/a>/g;
-    let match;
-    
-    while ((match = regex.exec(html)) !== null) {
-      torrents.push({
-        id: match[1],
-        title: match[3],
-        url: `https://thepiratebay.org/torrent/${match[1]}`,
-        provider: 'ThePirateBay'
-      });
-    }
-    
-    return torrents;
-  } catch (error) {
-    console.error('Error searching The Pirate Bay:', error);
-    return [];
-  }
-}
-
-// Function to search KickassTorrents
-async function searchKickass(query: string): Promise<TorrentInfo[]> {
-  try {
-    const response = await axios.get(`https://kickasstorrents.to/search/${encodeURIComponent(query)}`);
-    const html = response.data;
-    
-    const torrents: TorrentInfo[] = [];
-    const regex = /<a href="\/torrent\/([^"]+)".*?>(.*?)<\/a>/g;
-    let match;
-    
-    while ((match = regex.exec(html)) !== null) {
-      torrents.push({
-        id: match[1],
-        title: match[2],
-        url: `https://kickasstorrents.to/torrent/${match[1]}`,
-        provider: 'KickassTorrents'
-      });
-    }
-    
-    return torrents;
-  } catch (error) {
-    console.error('Error searching KickassTorrents:', error);
-    return [];
-  }
-}
-
-// Function to get magnet link from torrent page
-async function getMagnet(url: string) {
-  try {
-    const response = await axios.get(url);
-    const html = response.data;
-    
-    // Extract magnet link from the page
-    const magnetMatch = html.match(/href="(magnet:\?xt=urn:btih:[^"]+)"/);
-    return magnetMatch ? magnetMatch[1] : null;
-  } catch (error) {
-    console.error('Error getting magnet:', error);
-    return null;
-  }
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const { query, suggestions } = req.query;
+  const { query } = req.query;
 
   if (!query || typeof query !== 'string') {
     return res.status(400).json({ error: 'Query is required' });
   }
 
   try {
-    // Search all providers in parallel
-    const [results1337x, resultsPirateBay, resultsKickass] = await Promise.all([
+    const [tpbResults, x1337Results] = await Promise.all([
+      searchThePirateBay(query),
       search1337x(query),
-      searchPirateBay(query),
-      searchKickass(query)
     ]);
-    
-    // Combine all results
-    const searchResults = [...results1337x, ...resultsPirateBay, ...resultsKickass];
-    
-    // Fetch magnet links for each torrent
-    const torrentsWithMagnets = await Promise.all(
-      searchResults.map(async (torrent) => {
-        try {
-          const magnet = await getMagnet(torrent.url);
-          if (magnet) {
-            return {
-              ...torrent,
-              magnet,
-              size: 'Unknown', // You might want to extract this from the torrent page
-              seeds: 0 // You might want to extract this from the torrent page
-            };
-          }
-          return null;
-        } catch (error) {
-          console.error(`Error getting magnet for ${torrent.title}:`, error);
-          return null;
-        }
-      })
-    );
 
-    // Filter out null results and those without magnet links
-    const finalTorrents = torrentsWithMagnets.filter((t): t is NonNullable<typeof t> => t !== null);
+    const allResults = [...tpbResults, ...x1337Results];
+    res.json({ results: allResults });
 
-    if (suggestions) {
-      // Return top 10 torrents for suggestion cards
-      return res.json({ results: finalTorrents.slice(0, 10) });
-    }
-
-    console.log('Search results:', finalTorrents);
-    return res.json({ results: finalTorrents });
   } catch (error) {
     console.error('Search failed:', error);
-    return res.status(500).json({ error: 'Failed to search for torrents' });
+    res.status(500).json({ error: 'Failed to search for torrents' });
   }
 }
