@@ -37,7 +37,7 @@ export class RealDebridService {
 
   async addMagnet(magnet: string): Promise<string> {
     const response = await this.makeRequest('/torrents/addMagnet', 'POST', { magnet });
-    return response.id;
+    return response.data.id;
   }
 
   private async selectAllFiles(torrentId: string): Promise<void> {
