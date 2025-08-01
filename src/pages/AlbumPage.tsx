@@ -27,7 +27,7 @@ function AlbumPage() {
 
   const handleDownloadAll = async () => {
     if (!torrentId || !debridKey || downloading) return;
-    
+
     setDownloading(true);
     setDownloadProgress(0);
     try {
@@ -52,7 +52,7 @@ function AlbumPage() {
       alert('Please wait for all tracks to be processed');
       return;
     }
-    
+
     playTrack({
       title: fileName,
       artist: albumInfo.title || 'Unknown Artist',
@@ -76,7 +76,7 @@ function AlbumPage() {
       try {
         const id = await rdService.addMagnet(albumInfo.magnet || albumInfo.link);
         const info = await rdService.getTorrentInfo(id);
-        
+
         setFiles(info.files.sort((a, b) => a.path.localeCompare(b.path)));
         setTorrentId(id);
         setAlbumInfo((prev: any) => ({ ...prev, title: info.filename || prev.title }));
@@ -101,15 +101,26 @@ function AlbumPage() {
           <div className="album-meta">
             <h1>{albumInfo.title}</h1>
             <p>{albumInfo.size} | Seeders: {albumInfo.seeds}</p>
-            <button
-              className="download-button"
-              onClick={handleDownloadAll}
-              disabled={downloading}
-            >
-              {downloading ? `Downloading... ${downloadProgress}%` : 'Download All Tracks'}
-            </button>
+            {Object.keys(links).length === 0 && (
+              <button
+                className="download-button"
+                onClick={handleDownloadAll}
+                disabled={downloading || loading}
+              >
+                {downloading ? 'Processing...' : 'Process Album'}
+              </button>
+            )}
           </div>
         </header>
+      )}
+      {downloading && (
+        <div className="progress-bar">
+          <div
+            className="progress-bar-fill"
+            style={{ width: `${downloadProgress}%` }}
+          />
+          <div className="progress-text">{downloadProgress}%</div>
+        </div>
       )}
       <div className="track-list">
         {loading ? (
@@ -119,9 +130,10 @@ function AlbumPage() {
             .filter(file => file.path.toLowerCase().endsWith('.flac') || file.path.toLowerCase().endsWith('.mp3'))
             .map((file, index) => {
               const fileName = file.path.split('/').pop();
+              const isReady = fileName && links[fileName];
               return (
-                <button 
-                  className={`track-item ${fileName && links[fileName] ? 'ready' : ''}`}
+                <button
+                  className={`track-item ${isReady ? 'ready' : ''}`}
                   key={file.id}
                   onClick={() => handleTrackPlay(file)}
                   onKeyDown={(e) => {
@@ -129,26 +141,20 @@ function AlbumPage() {
                       handleTrackPlay(file);
                     }
                   }}
-                  disabled={downloading || !fileName || !links[fileName]}
+                  disabled={!isReady}
                 >
                   <span className="track-number">{index + 1}</span>
                   <div className="track-info">
                     <span className="track-title">{fileName}</span>
+                    {!isReady && downloading && <span className="status">Processing...</span>}
+                    {!isReady && !downloading && <span className="status">Click "Process Album" to enable</span>}
                   </div>
                 </button>
               );
             })
         )}
       </div>
-      {downloading && (
-        <div className="progress-bar">
-          <div 
-            className="progress-bar-fill"
-            style={{ width: `${downloadProgress}%` }}
-          />
-        </div>
-      )}
-      </div>
+    </div>
   )
 }
 
