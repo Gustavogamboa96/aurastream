@@ -23,27 +23,104 @@ function AlbumPage() {
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const rdService = useMemo(() => new RealDebridService(debridKey || ''), [debridKey]);
+  const pollTorrentStatus = async (id: string) => {
+    const response = await fetch(`/api/debrid/info?id=${id}`, {
+      headers: {
+        'Authorization': `Bearer ${debridKey}`
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to get torrent status');
+    }
+    
+    return response.json();
+  };
 
   const handleDownloadAll = async () => {
-    if (!torrentId || !debridKey || downloading) return;
+    if (!albumInfo?.magnet || !debridKey || downloading) return;
 
     setDownloading(true);
     setDownloadProgress(0);
+    
+    let statusCheckInterval: NodeJS.Timeout;
+
     try {
-      const streamUrls = await rdService.processDownload(
-        { torrentId },
-        (info: RealDebridInfo) => {
-          setDownloadProgress(info.progress || 0);
+      // 1. Add magnet and start processing
+      const response = await fetch('/api/debrid/info', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${debridKey}`
+        },
+        body: JSON.stringify({ magnet: albumInfo.magnet })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add magnet');
+      }
+
+      const initialInfo = await response.json();
+      setTorrentId(initialInfo.torrentId);
+      setFiles(initialInfo.files.sort((a, b) => a.path.localeCompare(b.path)));
+
+      // 2. Start polling for status
+      statusCheckInterval = setInterval(async () => {
+        try {
+          const status = await pollTorrentStatus(initialInfo.torrentId);
+          setDownloadProgress(status.progress || 0);
+
+          // When download is complete and we have links
+          if (status.status === 'downloaded' && status.links?.length > 0) {
+            clearInterval(statusCheckInterval);
+            
+            // 3. Unrestrict all links at once
+            const unrestrict = await fetch('/api/debrid/unrestrict', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${debridKey}`
+              },
+              body: JSON.stringify({
+                links: status.links,
+                files: status.files
+              })
+            });
+
+            if (unrestrict.ok) {
+              const { streamUrls } = await unrestrict.json();
+              setLinks(streamUrls);
+            } else {
+              throw new Error('Failed to get streaming URLs');
+            }
+            
+            setDownloading(false);
+          }
+        } catch (error) {
+          console.error('Failed to check status:', error);
         }
-      );
-      setLinks(streamUrls);
+      }, 2000);
+
+      // Clean up after 5 minutes to prevent infinite polling
+      setTimeout(() => {
+        clearInterval(statusCheckInterval);
+        if (downloading) {
+          setDownloading(false);
+          alert('Process timed out. Please try again.');
+        }
+      }, 300000);
+
     } catch (error: any) {
-      console.error('Failed to process files', error);
+      console.error('Failed to process files:', error);
       alert('Failed to process files for streaming');
-    } finally {
       setDownloading(false);
     }
+
+    return () => {
+      if (statusCheckInterval) {
+        clearInterval(statusCheckInterval);
+      }
+    };
   };
 
   const handleTrackPlay = (file: TrackFile) => {
@@ -71,25 +148,7 @@ function AlbumPage() {
       navigate('/settings');
       return;
     }
-
-    const fetchAlbumFiles = async () => {
-      try {
-        const id = await rdService.addMagnet(albumInfo.magnet || albumInfo.link);
-        const info = await rdService.getTorrentInfo(id);
-
-        setFiles(info.files.sort((a, b) => a.path.localeCompare(b.path)));
-        setTorrentId(id);
-        setAlbumInfo((prev: any) => ({ ...prev, title: info.filename || prev.title }));
-      } catch (error: any) {
-        console.error('Failed to fetch album files', error);
-        const errorMessage = error.message || 'Could not load album details.';
-        alert(`Error: ${errorMessage}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchAlbumFiles();
+    setLoading(false);
   }, [albumInfo, navigate, debridKey]);
 
   return (
