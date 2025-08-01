@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { RealDebridService } from '../../src/services/realDebridService';
-import { RealDebridService } from '../../src/services/realDebridService';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
