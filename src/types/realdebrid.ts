@@ -24,6 +24,5 @@ export interface RealDebridInfo {
 
 export interface DownloadOptions {
   torrentId: string;
-  fileId?: number;  // Optional: for selecting specific files from a torrent
   stream?: boolean; // Whether to stream or download
 }

@@ -1,8 +1,8 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useContext } from 'react';
-import qs from 'qs';
+import { useState, useEffect, useContext, useMemo } from 'react';
 import { AppContext } from '../store/AppContext';
-import axios from 'axios';
+import { RealDebridService } from '../services/realDebridService';
+import { RealDebridInfo } from '../types/realdebrid';
 import './AlbumPage.css';
 
 interface TrackFile {
@@ -19,46 +19,45 @@ function AlbumPage() {
   const [albumInfo, setAlbumInfo] = useState(location.state?.torrent);
   const [files, setFiles] = useState<TrackFile[]>([]);
   const [torrentId, setTorrentId] = useState<string | null>(null);
-  const [links, setLinks] = useState<Record<number, string>>({});
+  const [links, setLinks] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const rdService = useMemo(() => new RealDebridService(debridKey || ''), [debridKey]);
 
-  const downloadFile = async (fileId: number) => {
-    if (!torrentId || processing) return;
+  const handleDownloadAll = async () => {
+    if (!torrentId || !debridKey || downloading) return;
     
-    setProcessing(true);
+    setDownloading(true);
+    setDownloadProgress(0);
     try {
-      const res = await axios.post('/api/debrid/stream', 
-        { torrentId, fileId },
-        { headers: { Authorization: `Bearer ${debridKey}` } }
+      const streamUrls = await rdService.processDownload(
+        { torrentId },
+        (info: RealDebridInfo) => {
+          setDownloadProgress(info.progress || 0);
+        }
       );
-      
-      setLinks(prev => ({ ...prev, [fileId]: res.data.streamUrl }));
+      setLinks(streamUrls);
     } catch (error: any) {
-      console.error('Failed to process file', error);
-      alert('Failed to process file for streaming');
+      console.error('Failed to process files', error);
+      alert('Failed to process files for streaming');
     } finally {
-      setProcessing(false);
+      setDownloading(false);
     }
   };
 
-  const handleTrackSelect = async (fileId: number) => {
-    if (!links[fileId]) {
-      await downloadFile(fileId);
-    }
-  };
-
-  const handleTrackPlay = (file: any) => {
-    if (!links[file.id]) {
-      alert('Please wait for the track to be processed');
+  const handleTrackPlay = (file: TrackFile) => {
+    const fileName = file.path.split('/').pop();
+    if (!fileName || !links[fileName]) {
+      alert('Please wait for all tracks to be processed');
       return;
     }
     
     playTrack({
-      title: file.path.split('/').pop() || 'Unknown Track',
+      title: fileName,
       artist: albumInfo.title || 'Unknown Artist',
       album: albumInfo.title || 'Unknown Album',
-      url: links[file.id]
+      url: links[fileName]
     });
   };
 
@@ -75,16 +74,15 @@ function AlbumPage() {
 
     const fetchAlbumFiles = async () => {
       try {
-        const res = await axios.post('/api/debrid/info', 
-          { magnet: albumInfo.magnet || albumInfo.link },
-          { headers: { Authorization: `Bearer ${debridKey}` } }
-        );
-        setFiles(res.data.files.sort((a: any, b: any) => a.path.localeCompare(b.path)));
-        setTorrentId(res.data.torrentId);
-        setAlbumInfo((prev: any) => ({ ...prev, title: res.data.filename || prev.title }));
+        const id = await rdService.addMagnet(albumInfo.magnet || albumInfo.link);
+        const info = await rdService.getTorrentInfo(id);
+        
+        setFiles(info.files.sort((a, b) => a.path.localeCompare(b.path)));
+        setTorrentId(id);
+        setAlbumInfo((prev: any) => ({ ...prev, title: info.filename || prev.title }));
       } catch (error: any) {
         console.error('Failed to fetch album files', error);
-        const errorMessage = error.response?.data?.error || 'Could not load album details.';
+        const errorMessage = error.message || 'Could not load album details.';
         alert(`Error: ${errorMessage}`);
       } finally {
         setLoading(false);
@@ -103,6 +101,13 @@ function AlbumPage() {
           <div className="album-meta">
             <h1>{albumInfo.title}</h1>
             <p>{albumInfo.size} | Seeders: {albumInfo.seeds}</p>
+            <button
+              className="download-button"
+              onClick={handleDownloadAll}
+              disabled={downloading}
+            >
+              {downloading ? `Downloading... ${downloadProgress}%` : 'Download All Tracks'}
+            </button>
           </div>
         </header>
       )}
@@ -112,37 +117,37 @@ function AlbumPage() {
         ) : (
           files
             .filter(file => file.path.toLowerCase().endsWith('.flac') || file.path.toLowerCase().endsWith('.mp3'))
-            .map((file, index) => (
-              <button 
-                className={`track-item ${links[file.id] ? 'ready' : ''}`}
-                key={file.id}
-                onClick={() => handleTrackPlay(file)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    handleTrackPlay(file);
-                  }
-                }}
-                disabled={processing && !links[file.id]}
-              >
-                <span className="track-number">{index + 1}</span>
-                <div className="track-info">
-                  <span className="track-title">{file.path.split('/').pop()}</span>
-                  {!links[file.id] && (
-                    <button 
-                      className="download-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleTrackSelect(file.id);
-                      }}
-                      disabled={processing}
-                    >
-                      {processing ? 'Processing...' : 'Download'}
-                    </button>
-                  )}
-                </div>
-              </button>
-          ))
+            .map((file, index) => {
+              const fileName = file.path.split('/').pop();
+              return (
+                <button 
+                  className={`track-item ${fileName && links[fileName] ? 'ready' : ''}`}
+                  key={file.id}
+                  onClick={() => handleTrackPlay(file)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleTrackPlay(file);
+                    }
+                  }}
+                  disabled={downloading || !fileName || !links[fileName]}
+                >
+                  <span className="track-number">{index + 1}</span>
+                  <div className="track-info">
+                    <span className="track-title">{fileName}</span>
+                  </div>
+                </button>
+              );
+            })
         )}
+      </div>
+      {downloading && (
+        <div className="progress-bar">
+          <div 
+            className="progress-bar-fill"
+            style={{ width: `${downloadProgress}%` }}
+          />
+        </div>
+      )}
       </div>
     </div>
   );

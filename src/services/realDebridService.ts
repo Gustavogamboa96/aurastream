@@ -34,10 +34,10 @@ export class RealDebridService {
     return response.id;
   }
 
-  async selectFiles(torrentId: string, files: number[]): Promise<void> {
+  private async selectAllFiles(torrentId: string): Promise<void> {
     await this.fetchWithAuth(`/torrents/selectFiles/${torrentId}`, {
       method: 'POST',
-      body: JSON.stringify({ files }),
+      body: JSON.stringify({ files: "all" }),
     });
   }
 
@@ -66,21 +66,30 @@ export class RealDebridService {
     }
   }
 
-  async processDownload(options: DownloadOptions, onProgress: (info: RealDebridInfo) => void): Promise<string> {
-    // If specific file is selected
-    if (options.fileId) {
-      await this.selectFiles(options.torrentId, [options.fileId]);
-    }
+  async processDownload(options: DownloadOptions, onProgress: (info: RealDebridInfo) => void): Promise<Record<string, string>> {
+    // Always select all files
+    await this.selectAllFiles(options.torrentId);
 
     // Monitor download progress
     const downloadedInfo = await this.monitorDownload(options.torrentId, onProgress);
 
-    // Get unrestricted link for the first available link
-    if (!downloadedInfo.links?.[0]) {
+    // Get unrestricted links for all files
+    if (!downloadedInfo.links?.length) {
       throw new Error('No download links available');
     }
 
-    const unrestrictedLink = await this.getUnrestrictedLink(downloadedInfo.links[0]);
-    return unrestrictedLink;
+    const streamUrls: Record<string, string> = {};
+    
+    // Convert all links to unrestricted links
+    await Promise.all(
+      downloadedInfo.links.map(async (link, index) => {
+        const unrestrictedLink = await this.getUnrestrictedLink(link);
+        // Use the file name as the key if available, otherwise use the index
+        const key = downloadedInfo.files[index]?.path.split('/').pop() || `track-${index}`;
+        streamUrls[key] = unrestrictedLink;
+      })
+    );
+
+    return streamUrls;
   }
 }
