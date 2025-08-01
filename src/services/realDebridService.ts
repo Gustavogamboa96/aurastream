@@ -1,55 +1,63 @@
 import { RealDebridInfo, DownloadOptions } from '../types/realdebrid';
+import axios from 'axios';
+import qs from 'qs';
 
 const POLL_INTERVAL = 1000; // 1 second
+const POLL_MAX_RETRIES = 5;
 
 export class RealDebridService {
   private readonly apiKey: string;
   private readonly baseUrl = 'https://api.real-debrid.com/rest/1.0';
+  private readonly headers: { [key: string]: string };
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+    this.headers = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Bearer ${this.apiKey}`
+    };
   }
 
-  private async fetchWithAuth(endpoint: string, options: RequestInit = {}) {
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers: {
-        ...options.headers,
-        'Authorization': `Bearer ${this.apiKey}`
-      }
-    });
+  private async makeRequest(endpoint: string, method: string = 'GET', data?: any) {
+    const url = `${this.baseUrl}${endpoint}`;
+    const config = {
+      method,
+      url,
+      headers: this.headers,
+      data: data ? qs.stringify(data) : undefined
+    };
 
-    if (!response.ok) {
-      throw new Error(`Real-Debrid API error: ${response.statusText}`);
+    try {
+      const response = await axios(config);
+      return response.data;
+    } catch (error: any) {
+      throw new Error(`Real-Debrid API error: ${error.response?.data?.error || error.message}`);
     }
-
-    return response.json();
   }
 
   async addMagnet(magnet: string): Promise<string> {
-    const response = await this.fetchWithAuth('/torrents/addMagnet', {
-      method: 'POST',
-      body: JSON.stringify({ magnet }),
-    });
+    const response = await this.makeRequest('/torrents/addMagnet', 'POST', { magnet });
     return response.id;
   }
 
   private async selectAllFiles(torrentId: string): Promise<void> {
-    await this.fetchWithAuth(`/torrents/selectFiles/${torrentId}`, {
-      method: 'POST',
-      body: JSON.stringify({ files: "all" }),
-    });
+    await this.makeRequest(`/torrents/selectFiles/${torrentId}`, 'POST', { files: "all" });
   }
 
-  async getTorrentInfo(torrentId: string): Promise<RealDebridInfo> {
-    return this.fetchWithAuth(`/torrents/info/${torrentId}`);
+  async getTorrentInfo(torrentId: string, retries = POLL_MAX_RETRIES): Promise<RealDebridInfo> {
+    const response = await this.makeRequest(`/torrents/info/${torrentId}`);
+    
+    // If files array is empty and we have retries left, wait and try again
+    if ((!response.files || response.files.length === 0) && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+      return this.getTorrentInfo(torrentId, retries - 1);
+    }
+    
+    return response;
   }
 
   async getUnrestrictedLink(link: string): Promise<string> {
-    const response = await this.fetchWithAuth('/unrestrict/link', {
-      method: 'POST',
-      body: JSON.stringify({ link }),
-    });
+    const response = await this.makeRequest('/unrestrict/link', 'POST', { link });
     return response.download;
   }
 
