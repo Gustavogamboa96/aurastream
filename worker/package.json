@@ -1,0 +1,17 @@
+{
+  "name": "realdebrid-magnet-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker to process magnet links via Real-Debrid",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  },
+  "dependencies": {
+    "torrent-search-api": "^2.1.4",
+    "unrar-js": "^0.2.3"
+  }
+}

@@ -1,216 +1,392 @@
-import { useLocation, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useContext, useMemo } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useState, useEffect, useContext } from 'react';
 import { AppContext } from '../store/AppContext';
-import { RealDebridService } from '../services/realDebridService';
-import { RealDebridInfo } from '../types/realdebrid';
+import { createExtractorFromData } from 'node-unrar-js';
+import { openDB, IDBPDatabase } from 'idb';
 import './AlbumPage.css';
 
-interface TrackFile {
-  id: number;
+const WORKER_URL = (import.meta as any).env?.VITE_WORKER_URL || 'http://localhost:8787';
+const DB_NAME = 'AuraStreamDB';
+const DB_VERSION = 1;
+
+interface AlbumDB {
+  albums: {
+    key: string;
+    value: {
+      id: string;
+      title: string;
+      magnet: string;
+      addedAt: number;
+    };
+  };
+  tracks: {
+    key: number;
+    value: {
+      id?: number;
+      albumId: string;
+      filename: string;
+      blob: Blob;
+    };
+    indexes: { 'by-album': string };
+  };
+}
+
+interface ProcessedFile {
+  filename: string;
   path: string;
-  bytes: number;
-  selected: number;
+  size: number;
+  link: string;
+  isAudio: boolean;
+  isArchive: boolean;
+}
+
+interface AlbumTrack {
+  filename: string;
+  blob: Blob;
+  url: string;
+}
+
+// Initialize IndexedDB
+async function initDB(): Promise<IDBPDatabase<AlbumDB>> {
+  return openDB<AlbumDB>(DB_NAME, DB_VERSION, {
+    upgrade(db) {
+      // Create albums store
+      if (!db.objectStoreNames.contains('albums')) {
+        db.createObjectStore('albums', { keyPath: 'id' });
+      }
+      
+      // Create tracks store
+      if (!db.objectStoreNames.contains('tracks')) {
+        const trackStore = db.createObjectStore('tracks', { keyPath: 'id', autoIncrement: true });
+        trackStore.createIndex('by-album', 'albumId');
+      }
+    },
+  });
 }
 
 function AlbumPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { albumId: routeAlbumIdParam, id: routeIdParam } = useParams();
+  const routeAlbumId = (routeAlbumIdParam || routeIdParam) as string | undefined;
   const { playTrack, debridKey } = useContext(AppContext);
   const [albumInfo, setAlbumInfo] = useState(location.state?.torrent);
-  const [files, setFiles] = useState<TrackFile[]>([]);
-  const [torrentId, setTorrentId] = useState<string | null>(null);
-  const [links, setLinks] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [downloading, setDownloading] = useState(false);
+  const [tracks, setTracks] = useState<AlbumTrack[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const pollTorrentStatus = async (id: string) => {
-    const response = await fetch(`/api/debrid/info?id=${id}`, {
-      headers: {
-        'Authorization': `Bearer ${debridKey}`
-      }
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to get torrent status');
-    }
-    
-    return response.json();
-  };
+  const [currentFile, setCurrentFile] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [coverUrl, setCoverUrl] = useState<string | undefined>(undefined);
 
-  const handleDownloadAll = async () => {
-    if (!albumInfo?.magnet || !debridKey || downloading) return;
+  const handleProcessAlbum = async () => {
+    if (!albumInfo?.magnet || processing) return;
 
-    setDownloading(true);
-    setDownloadProgress(0);
-    
-    let statusCheckInterval: NodeJS.Timeout;
-
-    try {
-      // 1. Add magnet and start processing
-      const response = await fetch('/api/debrid/info', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${debridKey}`
-        },
-        body: JSON.stringify({ magnet: albumInfo.magnet })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add magnet');
-      }
-
-      const initialInfo = await response.json();
-      setTorrentId(initialInfo.torrentId);
-      setFiles(initialInfo.files.sort((a, b) => a.path.localeCompare(b.path)));
-
-      // 2. Start polling for status
-      statusCheckInterval = setInterval(async () => {
-        try {
-          const status = await pollTorrentStatus(initialInfo.torrentId);
-          setDownloadProgress(status.progress || 0);
-
-          // When download is complete and we have links
-          if (status.status === 'downloaded' && status.links?.length > 0) {
-            clearInterval(statusCheckInterval);
-            
-            // 3. Unrestrict all links at once
-            const unrestrict = await fetch('/api/debrid/unrestrict', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${debridKey}`
-              },
-              body: JSON.stringify({
-                links: status.links,
-                files: status.files
-              })
-            });
-
-            if (unrestrict.ok) {
-              const { streamUrls } = await unrestrict.json();
-              setLinks(streamUrls);
-            } else {
-              throw new Error('Failed to get streaming URLs');
-            }
-            
-            setDownloading(false);
-          }
-        } catch (error) {
-          console.error('Failed to check status:', error);
-        }
-      }, 2000);
-
-      // Clean up after 5 minutes to prevent infinite polling
-      setTimeout(() => {
-        clearInterval(statusCheckInterval);
-        if (downloading) {
-          setDownloading(false);
-          alert('Process timed out. Please try again.');
-        }
-      }, 300000);
-
-    } catch (error: any) {
-      console.error('Failed to process files:', error);
-      alert('Failed to process files for streaming');
-      setDownloading(false);
-    }
-
-    return () => {
-      if (statusCheckInterval) {
-        clearInterval(statusCheckInterval);
-      }
-    };
-  };
-
-  const handleTrackPlay = (file: TrackFile) => {
-    const fileName = file.path.split('/').pop();
-    if (!fileName || !links[fileName]) {
-      alert('Please wait for all tracks to be processed');
+    if (!debridKey) {
+      alert('Please set your Real-Debrid API key in Settings.');
       return;
     }
 
+    setProcessing(true);
+    setDownloadProgress(0);
+    try {
+      // Magnet is already available from search results
+      const magnet = albumInfo.magnet;
+      
+      if (!magnet) {
+        throw new Error('Magnet link not available');
+      }
+
+      setCurrentFile('Processing with Real-Debrid...');
+      
+      // Process magnet through worker
+      const response = await fetch(`${WORKER_URL}/magnet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${debridKey}`,
+        },
+        body: JSON.stringify({ magnet })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to process magnet');
+      }
+
+      const data = await response.json();
+      console.log('Received files from worker:', data);
+      
+      const processedFiles: ProcessedFile[] = data.files;
+      
+      if (!processedFiles || processedFiles.length === 0) {
+        throw new Error('No files received from Real-Debrid');
+      }
+      
+      // Use the first file - it's typically the one with the valid download link
+      const firstFile = processedFiles[0];
+      
+      console.log('Using first file:', firstFile);
+      
+      // Download RAR with streaming
+      setCurrentFile(`Downloading ${firstFile.filename}...`);
+      setDownloadProgress(0);
+      
+      const proxyUrl = `${WORKER_URL}/download?url=${encodeURIComponent(firstFile.link)}`;
+      const rarBlob = await downloadFileWithProgress(proxyUrl, (progress) => {
+        setDownloadProgress(progress);
+      });
+      
+      // Extract RAR
+      setExtracting(true);
+      setCurrentFile('Extracting audio files...');
+      console.log('Extracting RAR...');
+      
+      const { tracks: extractedTracks, cover } = await extractRarFile(rarBlob);
+      console.log(`Extracted ${extractedTracks.length} tracks`);
+      
+      // Save to IndexedDB
+      setCurrentFile('Saving to library...');
+      const albumId = data.torrentInfo.hash;
+      await saveAlbumToIndexedDB(albumId, albumInfo.title, magnet, extractedTracks, cover || undefined);
+      
+      console.log('Saved to IndexedDB');
+      setTracks(extractedTracks);
+      
+    } catch (error: any) {
+      console.error('Failed to process album:', error);
+      alert(error.message || 'Failed to process album');
+    } finally {
+      setProcessing(false);
+      setExtracting(false);
+      setCurrentFile('');
+      setDownloadProgress(0);
+    }
+  };
+
+  const downloadFileWithProgress = async (
+    url: string,
+    onProgress: (progress: number) => void
+  ): Promise<Blob> => {
+    const response = await fetch(url);
+    const contentLength = response.headers.get('content-length');
+    const total = contentLength ? Number.parseInt(contentLength, 10) : 0;
+    
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Failed to get reader');
+    
+    const chunks: BlobPart[] = [];
+    let receivedLength = 0;
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) break;
+      
+      chunks.push(value as BlobPart);
+      receivedLength += value.length;
+      
+      if (total > 0) {
+        onProgress(Math.round((receivedLength / total) * 100));
+      }
+    }
+    
+    return new Blob(chunks);
+  };
+
+  const extractRarFile = async (rarBlob: Blob): Promise<{ tracks: AlbumTrack[]; cover: Blob | null; }> => {
+    const arrayBuffer = await rarBlob.arrayBuffer();
+    // Load the WASM binary from same-origin to avoid bundling issues
+    const wasmResp = await fetch('/unrar.wasm');
+    if (!wasmResp.ok) throw new Error('Failed to load unrar.wasm');
+    const wasmBinary = await wasmResp.arrayBuffer();
+    const extractor = await createExtractorFromData({ data: arrayBuffer, wasmBinary });
+    const extracted = extractor.extract();
+    
+    const audioExtensions = ['.mp3', '.flac', '.wav', '.m4a', '.aac', '.ogg'];
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+    const extractedTracks: AlbumTrack[] = [];
+    let coverBlob: Blob | null = null;
+    
+    for (const file of extracted.files) {
+      const filename = file.fileHeader.name;
+      const lower = filename.toLowerCase();
+      const isAudio = audioExtensions.some(ext => lower.endsWith(ext));
+      const isImage = imageExtensions.some(ext => lower.endsWith(ext));
+      
+      if (isAudio && file.extraction) {
+        const blob = new Blob([file.extraction as BlobPart]);
+        extractedTracks.push({
+          filename,
+          blob,
+          url: URL.createObjectURL(blob)
+        });
+      }
+      // Try to capture a cover image (prefer common names)
+      if (!coverBlob && isImage && file.extraction) {
+        // Prefer files named cover.jpg, folder.jpg, front.*
+        if (/(^|\/)cover\.|(^|\/)folder\.|(^|\/)front\./.test(lower) || true) {
+          coverBlob = new Blob([file.extraction as BlobPart]);
+        }
+      }
+    }
+    
+    return { tracks: extractedTracks.sort((a, b) => a.filename.localeCompare(b.filename)), cover: coverBlob };
+  };
+
+  const saveAlbumToIndexedDB = async (
+    albumId: string,
+    title: string,
+    magnet: string,
+    tracks: AlbumTrack[],
+    cover?: Blob
+  ) => {
+    const db = await initDB();
+    
+    // Save album info
+    await db.put('albums', {
+      id: albumId,
+      title,
+      magnet,
+      addedAt: Date.now()
+    });
+    
+    // Save tracks
+    for (const track of tracks) {
+      await db.add('tracks', {
+        albumId,
+        filename: track.filename,
+        blob: track.blob
+      });
+    }
+    // Save cover if available
+    if (cover) {
+      await db.put('albums', {
+        id: albumId,
+        title,
+        magnet,
+        addedAt: Date.now(),
+        // store cover in a separate tracks entry to keep schema simple
+      } as any);
+      await db.add('tracks', {
+        albumId,
+        filename: '__cover__',
+        blob: cover
+      });
+    }
+  };
+
+  const handleTrackPlay = (track: AlbumTrack) => {
+    console.log('Playing track:', track);
     playTrack({
-      title: fileName,
+      title: track.filename.replace(/\\.(mp3|flac|wav|m4a|aac|ogg)$/i, ''),
       artist: albumInfo.title || 'Unknown Artist',
       album: albumInfo.title || 'Unknown Album',
-      url: links[fileName]
+      url: track.url
     });
   };
 
   useEffect(() => {
-    if (!albumInfo) {
-      navigate('/search');
-      return;
-    }
-    if (!debridKey) {
-      alert('Please set your Real-Debrid API key in Settings.');
-      navigate('/settings');
-      return;
-    }
-    setLoading(false);
-  }, [albumInfo, navigate, debridKey]);
+    (async () => {
+      // If navigated from Library, load tracks by albumId from IDB
+      const albumId: string | undefined = routeAlbumId || (location.state as any)?.albumId;
+      if (albumId) {
+        setLoading(true);
+        const db = await initDB();
+        // Load album meta to populate header
+        const albumMeta = await db.get('albums', albumId);
+        if (albumMeta && !albumInfo) {
+          setAlbumInfo({
+            title: albumMeta.title,
+            size: '',
+            seeds: 0,
+            magnet: albumMeta.magnet,
+          } as any);
+        }
+        const index = db.transaction('tracks').store.index('by-album');
+        const storedTracks = await index.getAll(albumId);
+        if (storedTracks && storedTracks.length > 0) {
+          const audioTracks = storedTracks.filter(t => t.filename !== '__cover__');
+          const coverTrack = storedTracks.find(t => t.filename === '__cover__');
+          const playable = audioTracks.map(t => ({ filename: t.filename, blob: t.blob, url: URL.createObjectURL(t.blob) }));
+          setTracks(playable);
+          if (coverTrack) setCoverUrl(URL.createObjectURL(coverTrack.blob));
+          setLoading(false);
+          return;
+        }
+        setLoading(false);
+      }
+
+      // Only redirect when neither albumInfo nor albumId are present
+      if (!albumInfo && !routeAlbumId && !(location.state as any)?.albumId) {
+        navigate('/search');
+        return;
+      }
+      setLoading(false);
+    })();
+  }, [albumInfo, navigate, location.state, routeAlbumId]);
+
 
   return (
     <div className="album-page">
       <button onClick={() => navigate(-1)} className="back-button">← Back to Search</button>
       {albumInfo && (
         <header className="album-header">
-          <img src="https://via.placeholder.com/300" alt="Album Cover" className="album-cover-art" />
+          <img src={coverUrl || 'https://via.placeholder.com/300'} alt="Album Cover" className="album-cover-art" />
           <div className="album-meta">
             <h1>{albumInfo.title}</h1>
             <p>{albumInfo.size} | Seeders: {albumInfo.seeds}</p>
-            {Object.keys(links).length === 0 && (
+            {tracks.length === 0 && !processing && (
               <button
                 className="download-button"
-                onClick={handleDownloadAll}
-                disabled={downloading || loading}
+                onClick={handleProcessAlbum}
+                disabled={processing || loading}
               >
-                {downloading ? 'Processing...' : 'Process Album'}
+                {processing ? 'Processing Album...' : 'Process Album'}
               </button>
             )}
           </div>
         </header>
       )}
-      {downloading && (
-        <div className="progress-bar">
-          <div
-            className="progress-bar-fill"
-            style={{ width: `${downloadProgress}%` }}
-          />
-          <div className="progress-text">{downloadProgress}%</div>
+      {(processing || extracting) && (
+        <div className="download-progress">
+          <div className="progress-info">
+            <span className="progress-file">{currentFile}</span>
+            {!extracting && <span className="progress-percentage">{downloadProgress}%</span>}
+          </div>
+          <div className="progress-bar">
+            <div 
+              className="progress-bar-fill" 
+              style={{ width: extracting ? '100%' : `${downloadProgress}%` }} 
+            />
+          </div>
+          {extracting && <p className="extracting-text">This may take a moment...</p>}
         </div>
       )}
       <div className="track-list">
         {loading ? (
-          <p>Loading tracks...</p>
+          <p>Loading...</p>
+        ) : tracks.length === 0 && !processing ? (
+          <p>Click "Process Album" to load tracks</p>
         ) : (
-          files
-            .filter(file => file.path.toLowerCase().endsWith('.flac') || file.path.toLowerCase().endsWith('.mp3'))
-            .map((file, index) => {
-              const fileName = file.path.split('/').pop();
-              const isReady = fileName && links[fileName];
-              return (
-                <button
-                  className={`track-item ${isReady ? 'ready' : ''}`}
-                  key={file.id}
-                  onClick={() => handleTrackPlay(file)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      handleTrackPlay(file);
-                    }
-                  }}
-                  disabled={!isReady}
-                >
-                  <span className="track-number">{index + 1}</span>
-                  <div className="track-info">
-                    <span className="track-title">{fileName}</span>
-                    {!isReady && downloading && <span className="status">Processing...</span>}
-                    {!isReady && !downloading && <span className="status">Click "Process Album" to enable</span>}
-                  </div>
-                </button>
-              );
-            })
+          tracks.map((track, index) => (
+            <button
+              className="track-item ready"
+              key={track.url}
+              onClick={() => handleTrackPlay(track)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  handleTrackPlay(track);
+                }
+              }}
+            >
+              <span className="track-number">{String(index + 1).padStart(2, '0')}</span>
+              <div className="track-info">
+                <span className="track-title">{track.filename.replace(/\.(mp3|flac|wav|m4a|aac|ogg)$/i, '')}</span>
+                <span className="track-format">{track.filename.match(/\.(mp3|flac|wav|m4a|aac|ogg)$/i)?.[1].toUpperCase()}</span>
+              </div>
+            </button>
+          ))
         )}
       </div>
     </div>

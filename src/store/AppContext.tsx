@@ -32,11 +32,24 @@ export function AppContextProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const playTrack = async (trackInfo: any) => {
-    if (!debridKey) {
-      alert('Please set your Real-Debrid API key in Settings.');
-      return;
-    }
     try {
+      // If we already have a direct URL (from worker unrestrict), use it directly
+      if (trackInfo.url) {
+        setCurrentTrack({
+          title: trackInfo.title || 'Unknown Track',
+          artist: trackInfo.artist || 'Unknown Artist',
+          album: trackInfo.album || 'Unknown Album'
+        });
+        setStreamUrl(trackInfo.url);
+        return;
+      }
+
+      // Legacy support for old format - this path shouldn't be used anymore
+      if (!debridKey) {
+        alert('Please set your Real-Debrid API key in Settings.');
+        return;
+      }
+
       // If a specific file is selected, we already have the torrent info
       if (trackInfo.selectedFile) {
         const res = await axios.post('/api/debrid/stream', 
@@ -103,8 +116,12 @@ export function AppContextProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (streamUrl && audioRef.current) {
+      console.log('Setting audio source:', streamUrl);
       audioRef.current.src = streamUrl;
-      audioRef.current.play();
+      audioRef.current.play().catch(err => {
+        console.error('Failed to play audio:', err);
+        alert('Failed to play audio. The file might not be ready yet or there may be a network issue.');
+      });
       setPlayer(p => ({ ...p, isPlaying: true }));
     }
   }, [streamUrl]);
@@ -113,10 +130,19 @@ export function AppContextProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{ debridKey, setDebridKey, currentTrack, streamUrl, queue, player, playTrack, addToQueue, togglePlay, seek, setVolume }}>
       {children}
       <audio 
-        ref={audioRef} 
+        ref={audioRef}
+        crossOrigin="anonymous"
+        preload="metadata"
         onTimeUpdate={() => setPlayer(p => ({ ...p, currentTime: audioRef.current?.currentTime || 0 }))}
         onLoadedMetadata={() => setPlayer(p => ({ ...p, duration: audioRef.current?.duration || 0 }))}
         onEnded={() => setPlayer(p => ({ ...p, isPlaying: false }))}
+        onError={(e) => {
+          console.error('Audio element error:', e);
+          const error = audioRef.current?.error;
+          if (error) {
+            console.error('Error code:', error.code, 'Message:', error.message);
+          }
+        }}
       />
     </AppContext.Provider>
   );
