@@ -6,7 +6,7 @@ import { openDB, IDBPDatabase } from 'idb';
 import { useNavigate } from 'react-router-dom';
 
 const DB_NAME = 'AuraStreamDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 interface AlbumDB {
   albums: {
@@ -31,7 +31,25 @@ interface AlbumDB {
 }
 
 async function getDB(): Promise<IDBPDatabase<AlbumDB>> {
-  return openDB<AlbumDB>(DB_NAME, DB_VERSION);
+  return openDB<AlbumDB>(DB_NAME, DB_VERSION, {
+    upgrade(db) {
+      if (!db.objectStoreNames.contains('albums')) {
+        db.createObjectStore('albums', { keyPath: 'id' });
+      }
+      const hasTracks = db.objectStoreNames.contains('tracks');
+      if (hasTracks) {
+        // Ensure index exists even if store pre-existed (best-effort check)
+        try {
+          db.transaction('tracks').store.index('by-album');
+        } catch {
+          // Cannot create index in upgrade if store already exists; ignore here.
+        }
+      } else {
+        const trackStore = db.createObjectStore('tracks', { keyPath: 'id', autoIncrement: true });
+        trackStore.createIndex('by-album', 'albumId');
+      }
+    }
+  });
 }
 
 function LibraryPage() {

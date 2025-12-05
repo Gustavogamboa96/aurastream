@@ -7,7 +7,7 @@ import './AlbumPage.css';
 
 const WORKER_URL = (import.meta as any).env?.VITE_WORKER_URL || 'http://localhost:8787';
 const DB_NAME = 'AuraStreamDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 interface AlbumDB {
   albums: {
