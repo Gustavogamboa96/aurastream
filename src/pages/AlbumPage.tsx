@@ -1,4 +1,4 @@
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useState, useEffect, useContext } from 'react';
 import { AppContext } from '../store/AppContext';
 import { createExtractorFromData } from 'node-unrar-js';
@@ -66,11 +66,17 @@ async function initDB(): Promise<IDBPDatabase<AlbumDB>> {
 
 function AlbumPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { albumId: routeAlbumIdParam, id: routeIdParam } = useParams();
-  const routeAlbumId = (routeAlbumIdParam || routeIdParam) as string | undefined;
+  const routeAlbumId = routeAlbumIdParam || routeIdParam;
   const { playTrack, debridKey } = useContext(AppContext);
-  const [albumInfo, setAlbumInfo] = useState(location.state?.torrent);
+  const [albumInfo, setAlbumInfo] = useState<any>(() => {
+    try {
+      const cached = globalThis.localStorage.getItem('lastAlbum');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [tracks, setTracks] = useState<AlbumTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -78,6 +84,35 @@ function AlbumPage() {
   const [currentFile, setCurrentFile] = useState('');
   const [extracting, setExtracting] = useState(false);
   const [coverUrl, setCoverUrl] = useState<string | undefined>(undefined);
+
+  const loadAlbumFromIDB = async (albumId: string) => {
+    setLoading(true);
+    const db = await initDB();
+    const albumMeta = await db.get('albums', albumId);
+    if (albumMeta && !albumInfo) {
+      setAlbumInfo({ title: albumMeta.title, size: '', seeds: 0, magnet: albumMeta.magnet } as any);
+      try { globalThis.localStorage.setItem('lastAlbum', JSON.stringify({ title: albumMeta.title, magnet: albumMeta.magnet })); } catch {}
+    }
+    const index = db.transaction('tracks').store.index('by-album');
+    const storedTracks = await index.getAll(albumId);
+    if (storedTracks && storedTracks.length > 0) {
+      const audioTracks = storedTracks.filter(t => t.filename !== '__cover__');
+      const coverTrack = storedTracks.find(t => t.filename === '__cover__');
+      const playable = audioTracks.map(t => ({ filename: t.filename, blob: t.blob, url: URL.createObjectURL(t.blob) }));
+      setTracks(playable);
+      if (coverTrack) setCoverUrl(URL.createObjectURL(coverTrack.blob));
+    }
+    setLoading(false);
+  };
+
+  const hydrateFromLocal = () => {
+    if (!albumInfo) {
+      try {
+        const cached = globalThis.localStorage.getItem('lastAlbum');
+        if (cached) setAlbumInfo(JSON.parse(cached));
+      } catch {}
+    }
+  };
 
   const handleProcessAlbum = async () => {
     if (!albumInfo?.magnet || processing) return;
@@ -223,15 +258,15 @@ function AlbumPage() {
         });
       }
       // Try to capture a cover image (prefer common names)
-      if (!coverBlob && isImage && file.extraction) {
-        // Prefer files named cover.jpg, folder.jpg, front.*
-        if (/(^|\/)cover\.|(^|\/)folder\.|(^|\/)front\./.test(lower) || true) {
-          coverBlob = new Blob([file.extraction as BlobPart]);
-        }
+      if (isImage && file.extraction) {
+        const blob = new Blob([file.extraction as BlobPart]);
+        const preferred = /(^|\/)cover\.|(^|\/)folder\.|(^|\/)front\./.test(lower);
+        if (!coverBlob || preferred) coverBlob = blob;
       }
     }
     
-    return { tracks: extractedTracks.sort((a, b) => a.filename.localeCompare(b.filename)), cover: coverBlob };
+    extractedTracks.sort((a, b) => a.filename.localeCompare(b.filename));
+    return { tracks: extractedTracks, cover: coverBlob };
   };
 
   const saveAlbumToIndexedDB = async (
@@ -287,44 +322,20 @@ function AlbumPage() {
   };
 
   useEffect(() => {
-    (async () => {
-      // If navigated from Library, load tracks by albumId from IDB
-      const albumId: string | undefined = routeAlbumId || (location.state as any)?.albumId;
-      if (albumId) {
-        setLoading(true);
-        const db = await initDB();
-        // Load album meta to populate header
-        const albumMeta = await db.get('albums', albumId);
-        if (albumMeta && !albumInfo) {
-          setAlbumInfo({
-            title: albumMeta.title,
-            size: '',
-            seeds: 0,
-            magnet: albumMeta.magnet,
-          } as any);
-        }
-        const index = db.transaction('tracks').store.index('by-album');
-        const storedTracks = await index.getAll(albumId);
-        if (storedTracks && storedTracks.length > 0) {
-          const audioTracks = storedTracks.filter(t => t.filename !== '__cover__');
-          const coverTrack = storedTracks.find(t => t.filename === '__cover__');
-          const playable = audioTracks.map(t => ({ filename: t.filename, blob: t.blob, url: URL.createObjectURL(t.blob) }));
-          setTracks(playable);
-          if (coverTrack) setCoverUrl(URL.createObjectURL(coverTrack.blob));
-          setLoading(false);
-          return;
-        }
-        setLoading(false);
+    const run = async () => {
+      if (routeAlbumId) {
+        await loadAlbumFromIDB(routeAlbumId);
+        return;
       }
-
-      // Only redirect when neither albumInfo nor albumId are present
-      if (!albumInfo && !routeAlbumId && !(location.state as any)?.albumId) {
+      hydrateFromLocal();
+      if (!albumInfo) {
         navigate('/search');
         return;
       }
       setLoading(false);
-    })();
-  }, [albumInfo, navigate, location.state, routeAlbumId]);
+    };
+    run();
+  }, [albumInfo, navigate, routeAlbumId]);
 
 
   return (
@@ -364,30 +375,31 @@ function AlbumPage() {
         </div>
       )}
       <div className="track-list">
-        {loading ? (
-          <p>Loading...</p>
-        ) : tracks.length === 0 && !processing ? (
-          <p>Click "Process Album" to load tracks</p>
-        ) : (
-          tracks.map((track, index) => (
-            <button
-              className="track-item ready"
-              key={track.url}
-              onClick={() => handleTrackPlay(track)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  handleTrackPlay(track);
-                }
-              }}
-            >
-              <span className="track-number">{String(index + 1).padStart(2, '0')}</span>
-              <div className="track-info">
-                <span className="track-title">{track.filename.replace(/\.(mp3|flac|wav|m4a|aac|ogg)$/i, '')}</span>
-                <span className="track-format">{track.filename.match(/\.(mp3|flac|wav|m4a|aac|ogg)$/i)?.[1].toUpperCase()}</span>
-              </div>
-            </button>
-          ))
-        )}
+        {(() => {
+          if (loading) return <p>Loading...</p>;
+          if (tracks.length === 0 && !processing) return <p>Click "Process Album" to load tracks</p>;
+          return tracks.map((track, index) => {
+            const fmt = /\.(mp3|flac|wav|m4a|aac|ogg)$/i.exec(track.filename)?.[1]?.toUpperCase();
+            return (
+              <button
+                className="track-item ready"
+                key={track.url}
+                onClick={() => handleTrackPlay(track)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    handleTrackPlay(track);
+                  }
+                }}
+              >
+                <span className="track-number">{String(index + 1).padStart(2, '0')}</span>
+                <div className="track-info">
+                  <span className="track-title">{track.filename.replace(/\.(mp3|flac|wav|m4a|aac|ogg)$/i, '')}</span>
+                  <span className="track-format">{fmt}</span>
+                </div>
+              </button>
+            );
+          });
+        })()}
       </div>
     </div>
   )

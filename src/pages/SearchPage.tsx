@@ -41,6 +41,9 @@ function SearchPage() {
   
   const handleResultClick = (torrent: any) => {
     const torrentId = torrent.info_hash || torrent.title;
+    try {
+      globalThis.localStorage.setItem('lastAlbum', JSON.stringify(torrent));
+    } catch {}
     navigate(`/album/${torrentId}`, { state: { torrent } });
   };
 
@@ -65,10 +68,16 @@ function SearchPage() {
         <div className="suggestions-container">
           <h3>Suggestions</h3>
           {suggestions.map((s) => (
-            <div className="suggestion-card" key={s.id || s.title} onClick={() => handleResultClick(s)}>
+            <button
+              type="button"
+              className="suggestion-card"
+              key={s.id || s.title}
+              onClick={() => handleResultClick(s)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleResultClick(s); }}
+            >
               <div className="card-title">{s.title}</div>
               <div className="card-meta">{s.size} | Seeders: {s.seeds}</div>
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -77,13 +86,19 @@ function SearchPage() {
         <div className="results-container">
           <h3>Results</h3>
           {results.slice(0, 15).map((r: any) => (
-            <div className="result-card" key={r.id || r.title} onClick={() => handleResultClick(r)}>
+            <button
+              type="button"
+              className="result-card"
+              key={r.id || r.title}
+              onClick={() => handleResultClick(r)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleResultClick(r); }}
+            >
               <div className="card-info">
                 <div className="card-title">{r.title}</div>
                 <div className="card-meta">{r.size} | Seeders: {r.seeds}</div>
               </div>
               {/* Actions removed, click on card navigates */}
-            </div>
+            </button>
           ))}
         </div>
       )}
